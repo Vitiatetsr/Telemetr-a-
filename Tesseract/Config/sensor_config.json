@@ -1,0 +1,28 @@
+{
+    "sensores": [
+        {
+            "puerto_serie": "COM3",
+            "baudrate": 9600,
+            "slave_id": 1,
+            "parity": "N",
+            "registros": {
+                "flujo_instantaneo": {
+                    "address": 4,
+                    "count": 2
+                },
+                "flujo_acumulado": {
+                    "address": 8,
+                    "count": 2
+                },
+                "flags": {
+                    "address": 32,
+                    "count": 1
+                },
+                "bateria": {
+                    "address": 39,
+                    "count": 1
+                }
+            }
+        }
+    ]
+}
