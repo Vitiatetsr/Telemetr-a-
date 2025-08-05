@@ -1,10 +1,11 @@
 {
-    "RFC": "XAXX010101000",
+    "RFC": "HUJL0108026H5",
     "NSM": "MTR-001",
     "NSUE": "UE-001",
-    "Lat": "19.4326018",
-    "Long": "-99.1332049",
-    "formato_auditoria": "Medidor",
-    "exportar_usb": true,
-    "intervalo_monitoreo": 60
+    "Lat": 19.0178376,
+    "Long": -98.2591393,
+    "unidad_visualizacion": "m³/h",
+    "storage_path": "D:\\",
+    "hora_reporte": "23:00",
+    "report_type": ""
 }

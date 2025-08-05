@@ -1,202 +1,292 @@
+# Tesseract/Core/System/FileScheduler.py
+
+import os
 import time
 import threading
-import sqlite3
+import logging
+import json
+import smtplib
+import queue
 from datetime import datetime, timedelta
+from typing import Callable, Dict, Any
 from apscheduler.schedulers.background import BackgroundScheduler
-
-from Core.System.ConfigManager import ConfigManager
-from Core.Hardware.ModbusRTU_Manager import ModbusRTUManager
-from Core.DataProcessing.DataProcessor import DataProcessor
-from Core.DataProcessing.DataFormatter import DataFormatter
-from Core.Network.FTPManager import FTPManager
-from Core.Network.SMSManager import SMSManager
-from Core.Network.InternetManager import InternetManager
-from Core.Hardware.USBManejador import USBManejador
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from Core.Network.IFileTransfer import IFileTransfer
 from Core.System.ErrorHandler import ErrorHandler
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+
 
 class FileScheduler:
-    def __init__(self):
-        self.error_handler = ErrorHandler()
-        self._cargar_configuracion()
-        self._inicializar_base_datos()
-        self._inicializar_programador()
+    MAX_QUEUE_SIZE = 100
+    EMAIL_WORKERS = 3
+    
+    def __init__(
+        self,
+        transfer_service: IFileTransfer,
+        config: Dict[str, Any],
+        get_plantilla_fn: Callable[[str], Dict[str, Any]],
+        error_handler: ErrorHandler
+    ):
+        self.transfer_service = transfer_service
+        self.config = config
+        self.get_plantilla = get_plantilla_fn
+        self.error_handler = error_handler
+        self.logger = logging.getLogger(__name__)
         
-    def _cargar_configuracion(self):
+        self._scheduler = None
+        self._lock = threading.Lock()
+        
+        self.email_config = self._cargar_config_email()
+        
+        self._email_queue = queue.Queue(maxsize=self.MAX_QUEUE_SIZE)
+        self._email_workers = []
+        self._stop_event = threading.Event()
+        self._init_email_workers()  
+    
+    def _cargar_config_email(self) -> Dict[str, Any]:
         try:
-            self.config = ConfigManager.cargar_config_general()
-            self.sensor_cfg = ConfigManager.cargar_config_sensor()["sensores"][0]
-            self.ftp_cfg = ConfigManager.cargar_config_ftp()
-            self.sms_cfg = ConfigManager.cargar_config_sms()
+            config_path = 'Config/email_config.json'
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    return json.load(f)
+            return None
         except Exception as e:
-            self.error_handler.log_error("010", f"Error cargando config: {str(e)}")
-            raise
-
-    def _inicializar_base_datos(self):
-        self.conn = sqlite3.connect('pendientes.db')
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS cola_pendientes
-                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                             contenido TEXT NOT NULL,
-                             intentos INTEGER DEFAULT 0,
-                             proximo_intento DATETIME)''')
-        self.conn.commit()
-
-    def _inicializar_programador(self):
-        self.sched = BackgroundScheduler(daemon=True)
-        hora_programada = self.config.get("hora_programada", "00:01")
-        
-        hour, minute = map(int, hora_programada.split(":"))
-        # Envío diario
-        self.sched.add_job(self._generar_txt1, 'cron', hour=hour, minute=minute)
-        # Exportación USB diaria
-        self.sched.add_job(self._generar_txt2, 'cron', hour=hour, minute=minute)
-        # Procesar pendientes cada hora
-        self.sched.add_job(self._procesar_cola_pendientes, 'interval', hours=1)
-        
-        self.sched.start()
-
-    def _obtener_datos_sensor(self):
-        """
-        Lee múltiples registros del sensor según manual MV110-210:
-         - Porcentaje de flujo (regs 2-3)
-         - Flujo instantáneo (regs 4-5)
-         - Velocidad (regs 6-7)
-         - Flujo acumulado (regs 8-9)
-         - Totalizador T+ y decimales (regs 8-9, reg 10)
-         - Totalizador P+ y decimales (regs 11-12, reg 13)
-         - Flags de proceso (reg 20)
-         - Temperatura CPU (reg 28)
-         - Batería (reg 27)
-        Devuelve un dict con todos los valores decodificados.
-        """
-        try:
-            cfg = self.sensor_cfg
-            sensor = ModbusRTUManager(
-                port=cfg["puerto_serie"],
-                baudrate=cfg["baudrate"],
-                slave_id=cfg["slave_id"],
-                parity=cfg.get("parity", "N")
-            )
-            if not sensor.connect():
-                raise ConnectionError("KER-007: Fallo de conexión al sensor")
-            
-            # Leer registros
-            regs_pct = sensor.read_registers(2, 2)    # % flujo
-            regs_inst = sensor.read_registers(4, 2)   # flujo instantáneo
-            regs_spd = sensor.read_registers(6, 2)    # velocidad
-            regs_acu = sensor.read_registers(8, 2)    # flujo acumulado
-            
-            # Totalizador T+
-            regs_T = sensor.read_registers(8, 2)      # mismos regs que flujo acumulado
-            dec_T = sensor.read_registers(10, 1)[0] & 0xFF  # LSB = decimales
-            
-            # Totalizador P+
-            regs_P = sensor.read_registers(11, 2)
-            dec_P = sensor.read_registers(13, 1)[0] & 0xFF
-            
-            # Flags de proceso (MSB/LSB)
-            reg_flags = sensor.read_registers(20, 1)
-            flags = reg_flags[0] if reg_flags else 0
-            
-            # Temperatura CPU
-            reg_temp = sensor.read_registers(28, 1)
-            temp = reg_temp[0] / 10.0 if reg_temp else 0.0
-            
-            # Batería
-            reg_batt = sensor.read_registers(27, 1)
-            batt = reg_batt[0] if reg_batt else 0
-            
-            sensor.close()
-            
-            return {
-                "porcentaje_flujo": DataProcessor.decode_32bit_float(regs_pct),
-                "flujo_instantaneo": DataProcessor.decode_32bit_float(regs_inst),
-                "velocidad": DataProcessor.decode_32bit_float(regs_spd),
-                "flujo_acumulado": DataProcessor.decode_32bit_float(regs_acu),
-                "totalizador_T": DataProcessor.decode_32bit_uint(regs_T),
-                "decimales_T": dec_T,
-                "totalizador_P": DataProcessor.decode_32bit_uint(regs_P),
-                "decimales_P": dec_P,
-                "flags": flags,
-                "temperatura": temp,
-                "bateria": batt
-            }
-        except Exception as e:
-            self.error_handler.log_error("010", f"Error sensor: {str(e)}")
+            self.error_handler.log_error("EMAIL_CONF", f"Error cargando configuración email: {e}")
             return None
 
-    def _generar_txt1(self):
-        datos = self._obtener_datos_sensor()
-        if not datos:
-            return
-        
-        # Antes de enviar, asegurarnos de tener internet
-        if not InternetManager.wait_for_connection():
-            # Añadir a cola y salir
-            contenido = DataFormatter.formatear_registro("Medidor", datos)
-            self._agregar_a_cola_pendientes(contenido)
-            return
-        
-        contenido = DataFormatter.formatear_registro("Medidor", datos)
-        exito_ftp = FTPManager(self.ftp_cfg["host"], self.ftp_cfg["usuario"]).enviar_alerta(contenido)
-        exito_sms = SMSManager(**self.sms_cfg).enviar_alerta(contenido, self.sms_cfg["numero_destino"])
-        
-        if not (exito_ftp and exito_sms):
-            self._agregar_a_cola_pendientes(contenido)
+    def _init_email_workers(self):
+        for i in range(self.EMAIL_WORKERS):
+            worker = threading.Thread(
+                target=self._email_worker_task,
+                name=f"EmailWorker-{i}",
+                daemon=True
+            )
+            worker.start()
+            self._email_workers.append(worker)
 
-    def _generar_txt2(self):
-        datos = self._obtener_datos_sensor()
-        if not datos:
-            return
-        
-        nombre_archivo = DataFormatter.generar_nombre_archivo("SistemaMedicion")
-        USBManejador.guardar_en_usb(DataFormatter.formatear_registro("SistemaMedicion", datos),
-                                    nombre_archivo)
-
-    def _agregar_a_cola_pendientes(self, contenido: str):
-        self.cursor.execute('''INSERT INTO cola_pendientes 
-                            (contenido, intentos, proximo_intento)
-                            VALUES (?, ?, ?)''',
-                            (contenido, 0, datetime.now() + timedelta(minutes=30)))
-        self.conn.commit()
-
-    def _procesar_cola_pendientes(self):
-        # Procesa envíos pendientes, reintentando con backoff exponencial
-        self.cursor.execute('''SELECT id, contenido, intentos 
-                            FROM cola_pendientes 
-                            WHERE proximo_intento <= ?''', (datetime.now(),))
-        pendientes = self.cursor.fetchall()
-        
-        for id_, contenido, intentos in pendientes:
-            if not InternetManager.wait_for_connection():
+    def _email_worker_task(self):
+        server = None
+        while not self._stop_event.is_set():
+            file_path = None
+            try:
+                file_path = self._email_queue.get(timeout=5.0)
+                
+                if server is None:
+                    server = self._crear_smtp_server()
+                
+                if server:
+                    self._enviar_email(server, file_path)
+                    
+            except queue.Empty:
                 continue
-            
-            exito_ftp = FTPManager(self.ftp_cfg["host"], self.ftp_cfg["usuario"]).enviar_alerta(contenido)
-            exito_sms = SMSManager(**self.sms_cfg).enviar_alerta(contenido, self.sms_cfg["numero_destino"])
-            
-            if exito_ftp and exito_sms:
-                self.cursor.execute("DELETE FROM cola_pendientes WHERE id = ?", (id_,))
-            else:
-                nuevo_intento = datetime.now() + timedelta(hours=2 ** intentos)
-                self.cursor.execute('''UPDATE cola_pendientes 
-                                    SET intentos = ?, 
-                                        proximo_intento = ?
-                                    WHERE id = ?''',
-                                    (intentos + 1, nuevo_intento, id_))
-            self.conn.commit()
+            except Exception as e:
+                self.error_handler.log_error("EMAIL_WORKER", f"Error en worker: {e}")
+                server = None
+            finally:
+                if file_path is not None:
+                    self._email_queue.task_done()
 
-    def detener(self):
-        self.sched.shutdown()
-        self.conn.close()
+        if server:
+            try:
+                server.quit()
+            except:
+                pass
+
+    def _crear_smtp_server(self) -> smtplib.SMTP:
+        if not self.email_config:
+            return None
+            
+        for _ in range(3):
+            try:
+                server = smtplib.SMTP(
+                    self.email_config['smtp_server'],
+                    self.email_config['smtp_port'],
+                    timeout=15
+                )
+                server.starttls()
+                server.login(
+                    self.email_config['username'],
+                    self.email_config['password']
+                )
+                self.logger.info("Conexión SMTP establecida")
+                return server
+            except Exception as e:
+                self.error_handler.log_error("SMTP_CONN", f"Error conexión SMTP: {e}")
+                time.sleep(2)
+        return None
+
+    def _enviar_email(self, server: smtplib.SMTP, file_path: str):
+        if not os.path.exists(file_path):
+            self.logger.warning(f"Archivo no encontrado: {file_path}")
+            return
+            
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = self.email_config['from']
+            msg['To'] = ", ".join(self.email_config['to'])
+            msg['Subject'] = self.email_config['subject']
+            
+            with open(file_path, "rb") as f:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(f.read())
+                encoders.encode_base64(part)
+                filename = os.path.basename(file_path)
+                part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                msg.attach(part)
+            
+            server.sendmail(
+                self.email_config['from'],
+                self.email_config['to'],
+                msg.as_string()
+            )
+            self.logger.info(f"Email enviado: {filename}")
+            
+            # SOLUCIÓN: Eliminar solo después de envío exitoso
+            self._eliminar_archivo_seguro(file_path)
+            
+        except smtplib.SMTPServerDisconnected:
+            self.logger.warning("Reconectando SMTP...")
+            raise
+        except Exception as e:
+            self.error_handler.log_error("EMAIL_SEND", f"Error enviando email: {e}")
+
+    def _eliminar_archivo_seguro(self, ruta_local):
+        """Elimina archivos solo después de procesamiento completo"""
+        try:
+            if os.path.exists(ruta_local):
+                os.remove(ruta_local)
+                self.logger.info(f"Archivo eliminado: {os.path.basename(ruta_local)}")
+        except Exception as e:
+            self.error_handler.log_error("FILE_DELETE", f"Error eliminando archivo: {e}")
+
+    def _validate_time_format(self, hora_envio: str) -> tuple[int, int]:
+        try:
+            hora, minuto = map(int, hora_envio.split(":"))
+            if not (0 <= hora <= 23 and 0 <= minuto <= 59):
+                raise ValueError("Hora o minuto fuera de rango")
+            return hora, minuto
+        except ValueError as e:
+            self.error_handler.log_error("SCHED_CONF", f"Formato de hora_envio inválido: {e}")
+            return 23, 59
 
     def iniciar(self):
-        pass
+        try:
+            if self._scheduler is None or self._scheduler.state == 0:
+                self._scheduler = BackgroundScheduler(
+                    daemon=True,
+                    executors={'default': {'type': 'threadpool', 'max_workers': 4}},
+                    job_defaults={'misfire_grace_time': 3600}
+                )
+            
+            hora_envio = self.config.get("hora_envio", "23:59")
+            hora, minuto = self._validate_time_format(hora_envio)
+            
+            self._scheduler.remove_all_jobs()
+            
+            self._scheduler.add_job(
+                self._enviar_archivos_pendientes,
+                "cron",
+                hour=hora,
+                minute=minuto
+            )
+            self._scheduler.add_job(
+                self._verificar_pendientes,
+                "interval",
+                minutes=15
+            )
+            
+            if self._scheduler.state == 0:
+                self._scheduler.start()
+                self.logger.info("Scheduler iniciado correctamente")
+            else:
+                self.logger.info("Scheduler ya está en ejecución")
+            
+        except Exception as e:
+            self.error_handler.log_error("SCHED_INIT", f"Error iniciando scheduler: {e}")
 
-if __name__ == "__main__":
-    fs = FileScheduler()
-    try:
-        # Mantener el scheduler vivo
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        fs.detener()
+    def _procesar_archivo_individual(self, ruta_local):
+        archivo = os.path.basename(ruta_local)
+        try:
+            plantilla = self.get_plantilla(archivo)
+            ruta_base = self.config.get("ruta_remota", "/config_error")
+            nombre_remoto = plantilla.get("nombre_remoto", archivo)
+            ruta_remota = os.path.join(ruta_base, nombre_remoto)
+
+            ftp_exitoso = False
+            if "/config_error" in ruta_remota:
+                self.error_handler.log_error("CONFIG_ERROR", f"Falta 'ruta_remota' para {archivo}")
+            else:
+                ftp_exitoso = self.transfer_service.enviar_archivo(ruta_local, ruta_remota)
+                if ftp_exitoso:
+                    self.logger.info(f"FTP exitoso: {archivo}")
+                else:
+                    self.logger.warning(f"Fallo FTP: {archivo}")
+
+            if self.email_config:
+                try:
+                    self._email_queue.put(ruta_local, block=False)
+                except queue.Full:
+                    self.error_handler.log_error("EMAIL_QUEUE", f"Cola llena, omitiendo {archivo}")
+
+            # SOLUCIÓN: Ya no eliminamos aquí
+            # (Se eliminará después del envío de email)
+                
+        except Exception as e:
+            self.error_handler.log_error("SCHED_SEND", f"Error procesando {archivo}: {e}")
+
+    def _enviar_archivos_pendientes(self):
+        with self._lock:
+            directorio = self.config.get("directorio_pendientes", "pendientes_usb")
+            archivos = [f for f in os.listdir(directorio) if f.endswith(".txt")]
+            
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {}
+                for archivo in archivos:
+                    ruta_local = os.path.join(directorio, archivo)
+                    future = executor.submit(self._procesar_archivo_individual, ruta_local)
+                    futures[future] = archivo
+                
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as e:
+                        archivo = futures[future]
+                        self.error_handler.log_error("SCHED_PARALLEL", f"Error en paralelo: {archivo} - {e}")
+
+    def _verificar_pendientes(self):
+        with self._lock:
+            directorio = self.config.get("directorio_pendientes", "pendientes_usb")
+            max_dias = max(self.config.get("retencion_dias", 7), 180)
+            
+            for archivo in os.listdir(directorio):
+                ruta = os.path.join(directorio, archivo)
+                if os.path.isfile(ruta):
+                    tiempo_creacion = datetime.fromtimestamp(os.path.getctime(ruta))
+                    if (datetime.now() - tiempo_creacion) > timedelta(days=max_dias):
+                        try:
+                            os.remove(ruta)
+                            self.logger.warning(f"Archivo antiguo eliminado: {archivo}")
+                        except Exception as e:
+                            self.error_handler.log_error("SCHED_CLEAN", f"Error eliminando {archivo}: {e}")
+
+    def detener(self):
+        try:
+            if self._scheduler and self._scheduler.running:
+                self._scheduler.shutdown(wait=True)
+                self.logger.info("Scheduler principal detenido")
+        except Exception as e:
+            self.error_handler.log_error("SCHED_TOP", f"Error detenido scheduler: {e}")
+        
+        self._stop_event.set()
+        self._email_queue.join()
+        
+        for worker in self._email_workers:
+            worker.join(timeout=3.0)
+        
+        self._stop_event.clear()
+        self._email_workers = []
+        self._init_email_workers()
+            
+        self.logger.info("Todos los componentes fueron detenidos correctamente")

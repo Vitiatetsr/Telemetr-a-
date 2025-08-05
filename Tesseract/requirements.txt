@@ -1,0 +1,10 @@
+# requirements.txt
+PyQt5==5.15.11
+pymodbus==3.8.6
+twilio==9.5.0
+APScheduler==3.11.0
+requests==2.32.3
+passlib==1.7.4
+pyserial==3.5
+psutil==7.0.0
+pyftpdlib==2.0.1

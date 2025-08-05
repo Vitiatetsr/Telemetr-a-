@@ -1,9 +1,6 @@
 {
-    "host": "ftp.tu-servidor.com",
-    "usuario": "usuario_ftp",
-    "clave_cifrada": "gAAAAABoDWJORp3gHrBahjF_an8QzA7Elph4aSPMrGpzy50CE3Shq2PCgOBn_wsrFdCugUzjrX8b8yIhMGiTgrI6YRkDbAMsZw==", 
-    "clave_fernet": "NO_USAR_EN_JSON",  
-    "activado": true,
-    "hora": "23:59",
-    "ruta_remota": "/telemetria"
+    "host": "medidores.conagua.gob.mx",
+    "usuario": "prueba18",
+    "clave": "Pr3st4D0reS18#",
+    "ruta_remota": "/Prueba/"
 }

@@ -1,30 +1,37 @@
+# Tesseract/Core/Network/InternetManager.py
+
 import requests
 import time 
 from Core.System.ErrorHandler import ErrorHandler
 
-
 class InternetManager:
-    @staticmethod
-    def is_connected(url: str = "http://www.google.com", timeout: int = 5) -> bool:
-        """
-        Retorna True si puede hacer GET a 'url' en menos de 'timeout' segundos.
-        """
-        try:
-            r = requests.get(url, timeout=timeout)
-            return r.status_code == 200
-        except Exception as e:
-            ErrorHandler().log_error("NET-001", f"No hay conexión: {e}")
-            return False
+    TEST_URLS = [
+        "http://www.google.com",
+        "http://www.cloudflare.com",
+        "http://www.amazon.com"
+    ]
+    
+    def __init__(self, error_handler: ErrorHandler, timeout=5):
+        self.error_handler = error_handler
+        self.timeout = timeout
+
+    def is_connected(self) -> bool:
+        """Verifica conectividad con múltiples endpoints"""
+        for url in self.TEST_URLS:
+            try:
+                response = requests.head(url, timeout=self.timeout)
+                if response.status_code < 500:
+                    return True
+            except:
+                continue
+        self.error_handler.log_evento("NET-001", "Sin conexión a internet")
+        return False
         
-        
-    @staticmethod
-    def wait_for_connection(retries: int = 5, delay: int = 2) -> bool:
-        """
-        Intenta 'is_connected()' hasta 'retries' veces, dormirá 'delay' segundos
-        Retorna True si recupera la conexión.
-        """
-        for i in range(1, retries + 1):
-            if InternetManager.is_connected():
+    def wait_for_connection(self, max_retries=10, base_delay=3) -> bool:
+        """Espera hasta que se restaure la conexión"""
+        for intento in range(max_retries):
+            if self.is_connected():
                 return True
-            time.sleep(delay)
+            delay = base_delay * (2 ** intento)
+            time.sleep(min(delay, 60))  # Máximo 60s entre reintentos
         return False
