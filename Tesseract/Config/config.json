@@ -1,0 +1,11 @@
+{
+    "RFC": "HUJL0108026H5",
+    "NSM": "MDR-000",
+    "NSUE": "TSR-000",
+    "Lat": 19.0178376,
+    "Long": -98.2591393,
+    "unidad_visualizacion": "m³/h",
+    "storage_path": "D:\\",
+    "hora_reporte": "20:00",
+    "report_type": "Medidor"
+}

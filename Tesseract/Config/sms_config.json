@@ -1,0 +1,7 @@
+{
+    "use_sms": true,
+    "account_sid": "tu_sid_de_twilio",
+    "auth_token": "tu_token_de_twilio",
+    "numero_twilio": "+1234567890",
+    "numero_destino": "+521234567890"
+}
