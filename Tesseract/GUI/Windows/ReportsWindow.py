@@ -11,7 +11,8 @@ from PyQt5.QtCore import QTimer
 from Core.System.ConfigManager import ConfigManager
 from Core.System.StateManager import StateManager
 from Core.System.ErrorHandler import ErrorHandler
-from Core.DataProcessing.Services import RecordFormatter, ConfigProvider, BitmaskConverter
+from Core.DataProcessing.Services import RecordFormatter, ConfigProvider, BitmaskConverter, FileNameGenerator # ✅ Añadido FileNameGenerator
+
 
 class ReportsWindow(QWidget):
     def __init__(self, medidor, error_handler: ErrorHandler):
@@ -53,6 +54,7 @@ class ReportsWindow(QWidget):
             config["report_type"] = tipo_reporte
             ConfigManager.guardar_config_general(config)
             
+            # Validación básica de USB
             if not usb_path:
                 self.lbl_status.setText("❌ Ruta USB no configurada")
                 return
@@ -60,46 +62,30 @@ class ReportsWindow(QWidget):
                 self.lbl_status.setText("❌ Ruta USB no existe")
                 return
 
-            # Crear archivo histórico en USB
-            archivo_historico = os.path.join(usb_path, "historico_mediciones.txt")
-            if not os.path.exists(archivo_historico):
-                open(archivo_historico, 'w').close()
-
-            # Programar tarea diaria
-            self.programar_tarea_diaria(hora_programada, archivo_historico)
+            # Programar tarea diaria (SIN pasar archivos histórico)
+            self.programar_tarea_diaria(hora_programada)
             
             # Generar reporte inmediato
-            self.generar_reporte_diario(archivo_historico)
+            self.generar_reporte_diario()
             self.lbl_status.setText("✅ Reporte diario programado")
             
         except Exception as e:
             self.lbl_status.setText(f"❌ Error: {str(e)}")
             self.error_handler.log_error("REP-INIT", str(e))
 
-    def programar_tarea_diaria(self, hora: str, archivo_historico: str):
+    def programar_tarea_diaria(self, hora: str):
         schedule.clear()
-        schedule.every().day.at(hora).do(
-            self.generar_reporte_diario,
-            archivo_historico=archivo_historico
-        )
-        
-        if not self.scheduler_thread or not self.scheduler_thread.is_alive():
-            self.scheduler_thread = threading.Thread(target=self.ejecutar_scheduler)
-            self.scheduler_thread.daemon = True
-            self.scheduler_thread.start()
+        schedule.every().day.at(hora).do(self.generar_reporte_diario)
 
-    def ejecutar_scheduler(self):
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
-
-    def verificar_tareas_programadas(self):
-        pass
-
-    def generar_reporte_diario(self, archivo_historico=None):
+    def generar_reporte_diario(self):
         try:
             config = ConfigManager.cargar_config_general()
             tipo_reporte = config.get("report_type", "Medidor")
+            usb_path = config.get("storage_path", "")
+            
+            # Validacíón crítica de USB
+            if not usb_path or not os.path.exists(usb_path):
+                raise ValueError("Ruta USB no configurada o inválida")
             
             # Obtener medidor desde StateManager
             medidor = StateManager.get_state('medidor')
@@ -116,16 +102,27 @@ class ReportsWindow(QWidget):
             formatter = RecordFormatter(config_provider, bitmask_converter)
             contenido = formatter.format(tipo_reporte, datos, perfil)
             
-            # 1. Escribir en histórico (USB)
-            if archivo_historico:
-                with open(archivo_historico, 'a') as f:
-                    f.write(contenido + "\n")
+            name_gen = FileNameGenerator(config_provider)
             
-            # 2. Crear reporte pendiente
+            # 1. Archivo historico (USB) - SIN FECHA
+            nombre_historico = name_gen.generate_historic_name(tipo_reporte)
+            ruta_historico = os.path.join(usb_path, nombre_historico)
+            
+            with open(ruta_historico, 'a') as f:
+                f.write(contenido + "\n")
+            
+            # 2. Crear archivo diario (pendientes_usb) - CON FECHA
+            nombre_diario = name_gen.generate_daily_name(tipo_reporte)
+            ruta_diario = os.path.join("pendientes_usb", nombre_diario)
+            
             os.makedirs("pendientes_usb", exist_ok=True)
-            archivo_pendiente = os.path.join("pendientes_usb", f"reporte_{datetime.now().strftime('%Y%m%d')}.txt")
-            with open(archivo_pendiente, 'w') as f:
+            with open(ruta_diario, 'w') as f:
                 f.write(contenido)
                 
         except Exception as e:
             self.error_handler.log_error("REP-GEN", f"Error generando reporte: {str(e)}")
+    
+    # MÉTODO FALTANTE - IMPERATIVO PARA EVITAR ERRORES
+    def verificar_tareas_programadas(self):
+        """Método requerido por el QTimer - Mantenido por compatibilidad"""
+        pass

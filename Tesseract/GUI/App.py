@@ -99,9 +99,13 @@ class TesseractApp(QApplication):
                 self.file_scheduler.iniciar()
                 logging.info("FileScheduler iniciado")
             
-            self.main_window.dashboard.start_monitoring()
-            logging.info("Monitoreo iniciado")
-            
+            # CORRECCIÓN CRÍTICA: Usar método REAL existente
+            if hasattr(self.main_window.dashboard, 'setup_data_acquisition'):
+                self.main_window.dashboard.setup_data_acquisition()
+                logging.info("Monitoreo iniciado")
+            else:
+                logging.error("Método setup_data_acquisition no encontrado en Dashboard")
+                
         except Exception as e:
             self.error_handler.log_error("APP_START", f"Error iniciando servicios: {e}")
 

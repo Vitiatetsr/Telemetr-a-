@@ -68,16 +68,38 @@ class UnitConverter(IUnitConverter):
 class FileNameGenerator(IFileNameGenerator):
     def __init__(self, config_provider: IConfigProvider):
         self.config_provider = config_provider
-
+    
+    # 1. Implementación del método abstracto REQUERIDO
     def generate(self, tipo_registro: str, fecha_en_nombre: bool = True) -> str:
+        """Método de compatibilidad (no usado en nuevo diseño)"""
+        if fecha_en_nombre:
+            return self.generate_daily_name(tipo_registro)
+        return self.generate_historic_name(tipo_registro)
+    
+    def generate_historic_name(self, tipo_registro: str) -> str:
+        """Nombre para archivo histórico acumulativo (SIN FECHA)"""
+        try:
+            config = self.config_provider.get_config()
+            if tipo_registro == "Medidor":
+                return f"{config['RFC']}_{config['NSM']}_{config['NSUE']}.txt"
+            elif tipo_registro == "SistemaMedicion":
+                return f"{config['RFC']}_{config['NSUE']}.txt"
+        except Exception as e:
+            logging.error(f"Error nombre histórico: {e}")
+            return "historico_mediciones.txt"
+
+    def generate_daily_name(self, tipo_registro: str) -> str:
+        """Nombre para archivo diario de envío (CON FECHA)"""
         try:
             config = self.config_provider.get_config()
             fecha = datetime.now().strftime("%Y%m%d")
-            base = f"{config['RFC']}_{config['NSM']}" if tipo_registro == "Medidor" else f"{config['RFC']}_QA"
-            return f"{base}_{fecha}.txt" if fecha_en_nombre else f"{base}.txt"
+            if tipo_registro == "Medidor":
+                return f"{config['RFC']}_{fecha}_{config['NSM']}_{config['NSUE']}.txt"
+            elif tipo_registro == "SistemaMedicion":
+                return f"{config['RFC']}_{fecha}_{config['NSUE']}.txt"
         except Exception as e:
-            logging.error(f"Error generando nombre: {e}")
-            return f"EMG_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            logging.error(f"Error nombre diario: {e}")
+            return f"reporte_{datetime.now().strftime('%Y%m%d')}.txt"
 
 class RecordFormatter(IRecordFormatter):
     def __init__(self, config_provider: IConfigProvider, bitmask_converter: IBitmaskConverter):

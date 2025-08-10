@@ -219,13 +219,17 @@ class DashboardWindow(QWidget):
         
     def update_ui(self):
         elapsed = time.time() - self.last_update_time
-        self.lbl_timestamp.setText(f"{elapsed:.1f} segundos")
         
+        # Mostrar advertencia pero CONTINUAR procesando datos
         if elapsed > 5.0:
             self.lbl_status.setText("¡FALLO DE COMUNICACIÓN!")
             self.lbl_status.setStyleSheet("color: red; font-weight: bold;")
-            return
+        
+        else:
+            self.lbl_status.setText("CONECTADO")
+            self.lbl_status.setStyleSheet("color: #27AE60; font-weight: bold;")
             
+        # Siempre procesar últimos datos disponibles (aunque sean antiguos)
         if not self.last_data:
             return
         
