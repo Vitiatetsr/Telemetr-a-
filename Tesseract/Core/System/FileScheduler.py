@@ -142,7 +142,7 @@ class FileScheduler:
             )
             self.logger.info(f"Email enviado: {filename}")
             
-            self._eliminar_archivo_seguro(file_path)
+            
             
         except smtplib.SMTPServerDisconnected:
             self.logger.warning("Reconectando SMTP...")
@@ -207,12 +207,13 @@ class FileScheduler:
         archivo = os.path.basename(ruta_local)
         try:
             plantilla = self.get_plantilla(archivo)
-            ruta_base = self.config.get("ruta_remota", "/config_error")
+            # ¡CORRECCIÓN! Ruta remota segura (sin slash final)
+            ruta_base = self.config.get("ruta_remota", "/default_conagua").rstrip('/')
             nombre_remoto = plantilla.get("nombre_remoto", archivo)
             ruta_remota = os.path.join(ruta_base, nombre_remoto)
 
             ftp_exitoso = False
-            if "/config_error" in ruta_remota:
+            if "/default_conagua" in ruta_remota:
                 self.error_handler.log_error("CONFIG_ERROR", f"Falta 'ruta_remota' para {archivo}")
             else:
                 ftp_exitoso = self.transfer_service.enviar_archivo(ruta_local, ruta_remota)
@@ -221,15 +222,22 @@ class FileScheduler:
                 else:
                     self.logger.warning(f"Fallo FTP: {archivo}")
 
-            if self.email_config:
-                try:
-                    self._email_queue.put(ruta_local, block=False)
-                except queue.Full:
-                    self.error_handler.log_error("EMAIL_QUEUE", f"Cola llena, omitiendo {archivo}")
+            # ¡IMPORTANTE! Eliminación condicional segura
+            if ftp_exitoso:
+                if self.email_config:
+                    try:
+                        self._email_queue.put(ruta_local, block=False)
+                    except queue.Full:
+                        self.error_handler.log_error("EMAIL_QUEUE", f"Cola llena, omitiendo {archivo}")
+                else:
+                    # Eliminar solo si no hay email configurado
+                    self._eliminar_archivo_seguro(ruta_local)
+            else:
+                self.logger.warning(f"Archivo retenido por fallo FTP: {archivo}")
                 
         except Exception as e:
             self.error_handler.log_error("SCHED_SEND", f"Error procesando {archivo}: {e}")
-
+            
     def _enviar_archivos_pendientes(self):
         with self._lock:
             directorio = self.config.get("directorio_pendientes", "pendientes_usb")

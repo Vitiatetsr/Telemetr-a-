@@ -127,8 +127,11 @@ class DashboardWindow(QWidget):
         reverse_key = (to_unit, from_unit)
         if reverse_key in converter.CONVERSION_STRATEGIES:
             reverse_fn = converter.CONVERSION_STRATEGIES[reverse_key]
-            return lambda x: x / reverse_fn(1) if reverse_fn(1) != 0 else x
-        
+            try:
+                factor = reverse_fn(1)
+                return lambda x: x / factor if factor != 0 else 0.0
+            except ZeroDivisionError:
+                return lambda x: 0.0
         self.error_handler.log_error("UNIT_CONV", f"Conversión no soportada: {from_unit}→{to_unit}")
         return lambda x: x
 
@@ -300,6 +303,8 @@ class DashboardWindow(QWidget):
             self.error_handler.log_error("DASH_EXTRA_UI", f"Error actualizando UI extra: {e}")
         
     def closeEvent(self, event):
+        # ¡CORRECCIÓN! Cierre robusto de hilos
         self.data_thread.stop()
-        self.data_thread.wait(2000)
+        if not self.data_thread.wait(2000):  # 3 seg timeout    
+            self.data_thread.terminate()  # Último recurso
         super().closeEvent(event)

@@ -49,7 +49,7 @@ class FTPManager(IFileTransfer):
                         self.logger.warning("El servidor no soporta PROT P, continuando sin cifrado de datos")
                     return True
                 except Exception as e:
-                    self.logger.warning(f"Fallo TLS, intentando sin cifrado: {str(e)}")
+                    self.logger.warning(f"Fallo TLS, intentando sin cifrado")  # ¡Credenciales seguras!
                     
             # Conexión FTP estándar
             self.connection = ftplib.FTP(timeout=self.timeout)
@@ -108,6 +108,16 @@ class FTPManager(IFileTransfer):
         except Exception as e:
             self.error_handler.log_error("FTP-003", f"Error creando directorios: {e}")
 
+    def _validar_formato_conagua(self, local_path: str) -> bool:
+        """Valida que el archivo cumpla con normativa Conagua"""
+        try:
+            with open(local_path, 'r') as f:
+                first_line = f.readline().strip()
+                return first_line.startswith(("M|", "QA|"))
+        except Exception as e:
+            self.error_handler.log_error("FTP-FORMAT", f"Error validando formato: {e}")
+            return False
+
     def enviar_archivo(self, local_path: str, remote_path: str) -> bool:
         self.logger.info(f"Iniciando envío FTP: {local_path} -> {remote_path}")
         
@@ -116,6 +126,11 @@ class FTPManager(IFileTransfer):
                 if not self._conectar():
                     self.logger.error("No se pudo establecer conexión FTP")
                     continue
+                
+                # Validación CRÍTICA de formato Conagua
+                if not self._validar_formato_conagua(local_path):
+                    self.error_handler.log_error("FTP-010", f"Formato inválido: {os.path.basename(local_path)}")
+                    return False
                 
                 # Crear estructura de directorios
                 remote_dir = os.path.dirname(remote_path)

@@ -1,4 +1,5 @@
 # Tesseract/GUI/Windows/ConfigWindow.py
+# Tesseract/GUI/Windows/ConfigWindow.py
 
 import os
 import json
@@ -6,7 +7,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QComboBox, 
     QLineEdit, QPushButton, QFormLayout, QMessageBox, QScrollArea
 )
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal # METODOS QUE SE ENCARGAN DEL HILO DE EJEUCION DE LA UI EN LA ACTUALIZACIÓN DE CONFIGURACIONES DE CONEXIÓN
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QIntValidator, QDoubleValidator
 from Core.Hardware import ModbusUtils
 from Core.System.ConfigManager import ConfigManager
@@ -56,9 +57,9 @@ class ConfigWindow(QWidget):
         self.cmb_stopbits.addItems(["1", "1.5", "2"])
         serial_layout.addRow("Bits de parada:", self.cmb_stopbits)
         
-        # ID Esclavo
+        # ID Esclavo (¡Rango Modbus válido!)
         self.txt_slave_id = QLineEdit("1")
-        self.txt_slave_id.setValidator(QIntValidator(1, 247))
+        self.txt_slave_id.setValidator(QIntValidator(1, 247))  # CORRECCIÓN CRÍTICA
         serial_layout.addRow("ID Esclavo:", self.txt_slave_id)
         
         # Botón detección puertos
@@ -176,29 +177,20 @@ class ConfigWindow(QWidget):
         
         def run(self):
             try:
-                # Liberar lock existente si está bloqueado
-                if self.medidor._connection_lock.locked():
-                    try:
-                        self.medidor._connection_lock.release()
-                    except RuntimeError:
-                        pass  # El lock no estaba adquirido por este hilo
-                
-                # Desconectar y reiniciar conexión
-                self.medidor.desconectar()
-                self.medidor.perfil = self.profile
-                self.medidor._init_client()
-                
-                # Conexión con timeout controlado
-                success = False
+                # SOLUCIÓN: Usar el lock nativo de Python, no Qt
                 with self.medidor._connection_lock:
-                    try:
-                        success = self.medidor.client.connect()
-                    except Exception as e:
-                        self.finished.emit(False, f"❌ Error conexión: {str(e)}")
-                
-                self.finished.emit(success, "✅ Configuración aplicada")
+                    # Desconectar y reiniciar conexión
+                    self.medidor.desconectar()
+                    self.medidor.perfil = self.profile
+                    self.medidor._init_client()
+                    
+                    # Conexión con timeout controlado
+                    success = self.medidor.conectar()
+                    message = "✅ Configuración aplicada" if success else "❌ Conexión fallida"
+                    self.finished.emit(success, message)
             except Exception as e:
                 self.finished.emit(False, f"❌ Error crítico: {str(e)}")
+
 
     def load_initial_config(self):
         """Carga inicial diferida para mejor rendimiento"""

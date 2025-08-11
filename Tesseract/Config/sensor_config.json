@@ -5,7 +5,7 @@
       "modelo": "Badger ModMAG® M2000",
       "puerto_serie": "COM3",
       "baudrate": 9600,
-      "slave_id": 0,
+      "slave_id": 1,
       "parity": "E",
       "stopbits": 1,
       "bytesize": 8,
@@ -15,11 +15,11 @@
       "funcion_default": 3,
       "registros": {
         "flujo_instantaneo": {
-          "address": 237,
+          "address": 241,
           "count": 2,
           "data_type": "float32",
-          "escala": 0.001,
-          "unidad": "m³/s",
+          "escala": 1,
+          "unidad": "L/s",
           "funcion": 3,
           "widget_ui": {
             "tipo": "GAUGE_LARGE",
@@ -30,7 +30,7 @@
           }
         },
         "flujo_acumulado": {
-          "address": 207,
+          "address": 211,
           "count": 2,
           "data_type": "float32",
           "escala": 1,
@@ -49,6 +49,7 @@
           "count": 1,
           "data_type": "int16",
           "funcion": 3,
+          "no_escalar": true,
           "widget_ui": {
             "tipo": "LED_INDICATOR",
             "posicion": [1, 0],
@@ -64,9 +65,9 @@
           "descripcion": "Contador de encendidos"
         },
         "errores_sensor": {
-          "address": 246,
+          "address": 262,
           "count": 1,
-          "data_type": "error",
+          "data_type": "bitmask",
           "bit_map": {
             "0": "sensor_fault",
             "1": "over_range",
@@ -101,9 +102,7 @@
         "flujo_instantaneo",
         "flujo_acumulado",
         "direccion_flujo",
-        "contador_energización",
-        "errores_sensor",
-        "codigo_error"
+        "errores_sensor"
       ],
       "widget_layout": "FULL"
     }

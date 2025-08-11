@@ -80,8 +80,15 @@ class MainWindow(QMainWindow):
             if profile.get("habilitado", True):
                 active_profile = profile
                 break
-        if not active_profile:
-            self.error_handler.log_error("HW-001", "No hay perfiles habilitados")
+        
+        # ¡VALIDACIÓN CRÍTICA! Perfil debe tener registros
+        if not active_profile or not active_profile.get("registros"):
+            self.error_handler.log_error("HW-001", "Perfil de sensor inválido")
+            QMessageBox.critical(
+                self, 
+                "Error de Configuración", 
+                "No se encontró un perfil de sensor válido. Configure un perfil en Configuración Hardware."
+            )
             return
         
         self.medidor = MedidorAguaBase(

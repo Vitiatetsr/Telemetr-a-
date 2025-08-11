@@ -1,4 +1,4 @@
-# Tesseract/Core/Hardware/ModbusRTU_Manager.py - VERSIÓN PRODUCCIÓN
+# Tesseract/Core/Hardware/ModbusRTU_Manager.py -
 
 import logging
 import time
@@ -195,7 +195,10 @@ class MedidorAguaBase(IMedidorAgua):
                 return decoder.decodificar(response.registers, reg_config, self.perfil)
                 
             except ModbusException as e:
-                if intento == 2:
+                # ¡CORRECCIÓN! Backoff exponencial industrial
+                wait_time = 0.5 * (2 ** intento)  # 0.5s, 1s, 2s
+                time.sleep(wait_time)
+                if intento < 2:  # Reintentar si no es el último intento
+                    self.conectar()
+                else:
                     raise
-                time.sleep(0.2)
-                self.conectar()
