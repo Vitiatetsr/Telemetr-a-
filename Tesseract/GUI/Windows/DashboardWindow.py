@@ -2,13 +2,13 @@
 
 import time
 import logging
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QGroupBox
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGridLayout, QLabel, QGroupBox)
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex, Qt, QMutexLocker
 from PyQt5.QtGui import QFont, QColor
 from Core.Hardware.ModbusRTU_Manager import MedidorAguaBase
 from Core.System.ConfigManager import ConfigManager
 from Core.DataProcessing.Services import UnitConverter
-from Core.System.StateManager import StateManager
+from Core.System import StateManager
 
 class DataAcquisitionThread(QThread):
     new_data = pyqtSignal(dict)
@@ -31,10 +31,13 @@ class DataAcquisitionThread(QThread):
                 if self.receivers(self.new_data) > 0:
                     self.new_data.emit(data)
                     
-                time.sleep(0.1)
+                time.sleep(1)  
                     
             except Exception as e:
-                self.medidor.error_handler.log_error("DASH_ACQ", f"Error adquisición: {e}")
+                if self.medidor and hasattr(self.medidor, 'error_handler'):
+                    self.medidor.error_handler.log_error("DASH_ACQ", f"Error adquisición: {e}")
+                else:
+                    logging.error(f"Error adquisición: {e}")
                 time.sleep(1)
     
     def stop(self):
@@ -48,6 +51,7 @@ class DataAcquisitionThread(QThread):
 class DashboardWindow(QWidget):
     def __init__(self, medidor, error_handler):
         super().__init__()
+        # Medidor puede ser None inicialmente
         self.medidor = medidor
         self.error_handler = error_handler
         self.unit_converter = UnitConverter()
@@ -60,10 +64,11 @@ class DashboardWindow(QWidget):
         self.last_data = {}
         
         # Widgets de estadísticas
-        self.lbl_energizacion = QLabel("0")
-        self.lbl_errores = QLabel("Ninguno")
-        self.lbl_cod_error = QLabel("0000")
+        self.lbl_energizacion = QLabel("N/A") 
+        self.lbl_errores = QLabel("N/A")
+        self.lbl_cod_error = QLabel("N/A")
         
+        # Configurar UI incluso si medidor es None
         self.setup_unit_conversion()
         self.setup_ui()
         self.setup_extra_ui()
@@ -97,9 +102,14 @@ class DashboardWindow(QWidget):
     def setup_unit_conversion(self):
         """Configura conversión de unidades eficiente"""
         try:
-            if "registros" not in self.medidor.perfil:
-                raise ValueError("Perfil de medidor no contiene sección 'registros'")
-            
+            # Manejar caso donde medidor o perfil no están disponibles
+            if not self.medidor or "registros" not in self.medidor.perfil:
+                self.base_unit = "m³/s"
+                config = ConfigManager.cargar_config_general()
+                self.display_unit = config.get("unidad_visualizacion", "L/s")
+                self.convert_fn = lambda x: x
+                return
+                
             reg_config = self.medidor.perfil["registros"].get(
                 "flujo_instantaneo", 
                 {"unidad": "m³/s"}  # Valor por defecto
@@ -127,11 +137,8 @@ class DashboardWindow(QWidget):
         reverse_key = (to_unit, from_unit)
         if reverse_key in converter.CONVERSION_STRATEGIES:
             reverse_fn = converter.CONVERSION_STRATEGIES[reverse_key]
-            try:
-                factor = reverse_fn(1)
-                return lambda x: x / factor if factor != 0 else 0.0
-            except ZeroDivisionError:
-                return lambda x: 0.0
+            return lambda x: x / reverse_fn(1) if reverse_fn(1) != 0 else x
+        
         self.error_handler.log_error("UNIT_CONV", f"Conversión no soportada: {from_unit}→{to_unit}")
         return lambda x: x
 
@@ -158,7 +165,7 @@ class DashboardWindow(QWidget):
         self.lbl_accumulated.setStyleSheet("color: #27AE60;")
         data_layout.addWidget(self.lbl_accumulated, 1, 1)
         
-        self.lbl_status = QLabel("OK")
+        self.lbl_status = QLabel("INICIALIZANDO...")
         self.lbl_status.setFont(QFont("Arial", 14))
         data_layout.addWidget(self.lbl_status, 2, 1)
         
@@ -189,9 +196,9 @@ class DashboardWindow(QWidget):
         self.ui_timer.start()
 
     def setup_data_acquisition(self):
-        """Inicia monitoreo solo si el sistema está listo"""
-        if not StateManager.is_system_ready():
-            self.lbl_status.setText("SISTEMA NO CONFIGURADO")
+        """Inicia monitoreo si el medidor está disponible"""
+        if self.medidor is None:
+            self.lbl_status.setText("MEDIDOR NO CONFIGURADO")
             self.lbl_status.setStyleSheet("color: red; font-weight: bold;")
             return
         
@@ -202,6 +209,7 @@ class DashboardWindow(QWidget):
         # Opcional: reiniciar valores
         self.last_update_time = time.time()
         self.last_data = {}
+        self.lbl_status.setText("CONECTANDO...")
         
     def on_new_data(self, data):
         self.last_data = data
@@ -218,10 +226,19 @@ class DashboardWindow(QWidget):
                 self.lbl_instant.setText(f"{display_flow:.2f} {self.display_unit}")
             logging.info("Configuración de unidades actualizada")
         except Exception as e:
-            self.error_handler.log_error("DASH_REFRESH", f"Error actualizando unidades: {e}")
+            if self.error_handler:
+                self.error_handler.log_error("DASH_REFRESH", f"Error actualizando unidades: {e}")
+            else:
+                logging.error(f"Error actualizando unidades: {e}")
         
     def update_ui(self):
         elapsed = time.time() - self.last_update_time
+        
+        # Mostrar advertencia si no hay datos
+        if not hasattr(self, 'last_data') or not self.last_data:
+            self.lbl_status.setText("ESPERANDO DATOS...")
+            self.lbl_status.setStyleSheet("color: orange;")
+            return
         
         # Mostrar advertencia pero CONTINUAR procesando datos
         if elapsed > 5.0:
@@ -233,44 +250,55 @@ class DashboardWindow(QWidget):
             self.lbl_status.setStyleSheet("color: #27AE60; font-weight: bold;")
             
         # Siempre procesar últimos datos disponibles (aunque sean antiguos)
-        if not self.last_data:
-            return
-        
-        raw_flow = self.last_data.get('flujo_instantaneo', 0)
-        display_flow = self.convert_fn(raw_flow)
+        try:
+            raw_flow = self.last_data.get('flujo_instantaneo', 0)
+            display_flow = self.convert_fn(raw_flow)
             
-        self.lbl_instant.setText(f"{display_flow:.2f} {self.display_unit}")
-        self.lbl_accumulated.setText(f"{self.last_data.get('flujo_acumulado', 0):.2f} m³")
-        
-        flags = self.last_data.get('flags', {})
-        flags_text = []
-        
-        if flags.get('alerta_presion', False):
-            flags_text.append("⚠️ Alta presión")
-        if flags.get('alerta_temperatura', False):
-            flags_text.append("⚠️ Alta temperatura")
-        if flags.get('fallo_sensor', False):
-            flags_text.append("❌ Fallo sensor")
+            self.lbl_instant.setText(f"{display_flow:.2f} {self.display_unit}")
+            self.lbl_accumulated.setText(f"{self.last_data.get('flujo_acumulado', 0):.2f} m³")
             
-        if flags_text:
-            self.lbl_flags.setText(" | ".join(flags_text))
-            self.lbl_flags.setStyleSheet("color: #E74C3C; font-weight: bold;")
-        else:
-            self.lbl_flags.setText("✅ Operación normal")
-            self.lbl_flags.setStyleSheet("color: #27AE60;")
+            # Manejo de dirección de flujo (1 = positivo, 2 = negativo)
+            direccion = self.last_data.get('direccion_flujo', 0)
+            if direccion == 1:
+                self.lbl_status.setText("CONECTADO (→)")
+            elif direccion == 2:
+                self.lbl_status.setText("CONECTADO (←)")
+        
+            flags = self.last_data.get('flags', {})
+            flags_text = []
             
-        if elapsed > 2.0:
-            self.lbl_status.setText("Comunicación lenta")
-            self.lbl_status.setStyleSheet("color: orange;")
-        else:
-            self.lbl_status.setText("CONECTADO")
-            self.lbl_status.setStyleSheet("color: #27AE60; font-weight: bold;")
+            if flags.get('alerta_presion', False):
+                flags_text.append("⚠️ Alta presión")
+            if flags.get('alerta_temperatura', False):
+                flags_text.append("⚠️ Alta temperatura")
+            if flags.get('fallo_sensor', False):
+                flags_text.append("❌ Fallo sensor")
+                
+            if flags_text:
+                self.lbl_flags.setText(" | ".join(flags_text))
+                self.lbl_flags.setStyleSheet("color: #E74C3C; font-weight: bold;")
+            else:
+                self.lbl_flags.setText("✅ Operación normal")
+                self.lbl_flags.setStyleSheet("color: #27AE60;")
+                
+            if elapsed > 2.0:
+                self.lbl_status.setText("Comunicación lenta")
+                self.lbl_status.setStyleSheet("color: orange;")
+            else:
+                self.lbl_status.setText("CONECTADO")
+                self.lbl_status.setStyleSheet("color: #27AE60; font-weight: bold;")
+        except Exception as e:
+            if self.error_handler:
+                self.error_handler.log_error("DASH_UPDATE", f"Error actualizando UI: {e}")
+            else:
+                logging.error(f"Error actualizando UI: {e}")
         
         try:
-            energizacion = self.last_data.get('contador_energización', 0)
-            self.lbl_energizacion.setText(str(energizacion))
+            # Manejo de opcionales con N/A
+            energizacion = self.last_data.get('contador_energizacion', None)
+            self.lbl_energizacion.setText(str(energizacion) if energizacion is not None else "N/A")
     
-            if energizacion > 1000:
+            if energizacion is not None and energizacion > 1000:
                 self.lbl_energizacion.setStyleSheet("color: orange; font-weight: bold;")
             else:
                 self.lbl_energizacion.setStyleSheet("")
@@ -284,27 +312,29 @@ class DashboardWindow(QWidget):
             if errores.get('empty_pipe', False):
                 errores_text.append("Tubería")
     
-            self.lbl_errores.setText(", ".join(errores_text) if errores_text else "Ninguno")
+            self.lbl_errores.setText(", ".join(errores_text) if errores_text else "Ninguno" if errores else "N/A")
     
             if errores_text:
                 self.lbl_errores.setStyleSheet("color: red; font-weight: bold;")
             else:
                 self.lbl_errores.setStyleSheet("")
     
-            cod_error = self.last_data.get('codigo_error', 0)
-            self.lbl_cod_error.setText(f"{cod_error:04X}")
+            cod_error = self.last_data.get('codigo_error', None)
+            self.lbl_cod_error.setText(f"{cod_error:04X}" if cod_error is not None else "N/A")
     
-            if cod_error != 0:
+            if cod_error is not None and cod_error != 0:
                 self.lbl_cod_error.setStyleSheet("color: red; font-weight: bold;")
             else:
                 self.lbl_cod_error.setStyleSheet("color: #7D3C98;")
         
         except Exception as e:
-            self.error_handler.log_error("DASH_EXTRA_UI", f"Error actualizando UI extra: {e}")
+            if self.error_handler:
+                self.error_handler.log_error("DASH_EXTRA_UI", f"Error actualizando UI extra: {e}")
+            else:
+                logging.error(f"Error actualizando UI extra: {e}")
         
     def closeEvent(self, event):
-        # ¡CORRECCIÓN! Cierre robusto de hilos
-        self.data_thread.stop()
-        if not self.data_thread.wait(2000):  # 3 seg timeout    
-            self.data_thread.terminate()  # Último recurso
+        if hasattr(self, 'data_thread'):
+            self.data_thread.stop()
+            self.data_thread.wait(2000)
         super().closeEvent(event)

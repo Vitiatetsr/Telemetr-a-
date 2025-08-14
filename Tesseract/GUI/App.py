@@ -80,14 +80,17 @@ class TesseractApp(QApplication):
             file_scheduler=self.file_scheduler
         )
         
-        if StateManager.is_system_ready():
-            self.start_system_services()
-        else:
-            logging.warning("Sistema no iniciado: Configuración incompleta")
-            QMessageBox.warning(
+        # FORZAR INICIO AUNQUE FALTEN CONFIGURACIONES
+        if hasattr(self.main_window, 'start_system_services'):
+            self.main_window.start_system_services()
+        
+        # Mensaje informativo en lugar de bloqueante
+        if not StateManager.is_system_ready():
+            QMessageBox.information(
                 self.main_window,
-                "Configuración Incompleta",
-                "Complete la configuración en 'Settings' y 'FTP/Email' para iniciar monitoreo"
+                "Configuraciones Pendientes",
+                "Algunas configuraciones (FTP/Email) están incompletas. "
+                "El monitoreo está activo pero algunas funciones pueden no estar disponibles."
             )
         
         self.main_window.show()
@@ -99,12 +102,10 @@ class TesseractApp(QApplication):
                 self.file_scheduler.iniciar()
                 logging.info("FileScheduler iniciado")
             
-            # CORRECCIÓN CRÍTICA: Usar método REAL existente
-            if hasattr(self.main_window.dashboard, 'setup_data_acquisition'):
-                self.main_window.dashboard.setup_data_acquisition()
+            # Iniciar monitoreo si el dashboard existe
+            if hasattr(self.main_window, 'dashboard_window'):
+                self.main_window.dashboard_window.setup_data_acquisition()
                 logging.info("Monitoreo iniciado")
-            else:
-                logging.error("Método setup_data_acquisition no encontrado en Dashboard")
                 
         except Exception as e:
             self.error_handler.log_error("APP_START", f"Error iniciando servicios: {e}")

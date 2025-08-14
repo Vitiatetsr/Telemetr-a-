@@ -27,27 +27,28 @@ class BitmaskConverter(IBitmaskConverter):
         return value
 
 class UnitConverter(IUnitConverter):
-    # Estrategias como propiedad de CLASE
+    # Estrategias como propiedad de CLASE (expandida para más flujos genéricos)
     CONVERSION_STRATEGIES = {
-    # Temperatura
-    ('°C', '°F'): lambda v: (v * 9/5) + 32,
-    ('°F', '°C'): lambda v: (v - 32) * 5/9,
-    
-    # Volumen
-    ('ml', 'l'): lambda v: v * 0.001,
-    ('ml', 'm³'): lambda v: v * 0.000001,
-    ('l', 'm³'): lambda v: v * 0.001,
-    ('gal', 'l'): lambda v: v * 3.78541,
-    
-    # Flujo (NUEVAS CONVERSIONES)
-    ('m³/s', 'L/s'): lambda v: v * 1000,
-    ('m³/s', 'gal/min'): lambda v: v * 15850.3,
-    ('m³/s', 'm³/h'): lambda v: v * 3600,
-    ('m³/h', 'L/s'): lambda v: v * 0.2778,
-    ('gal/min', 'L/s'): lambda v: v * 0.0630902,
-    ('m³/h', 'gal/min'): lambda v: v * 4.40287
-}
-
+        # Temperatura
+        ('°C', '°F'): lambda v: (v * 9/5) + 32,
+        ('°F', '°C'): lambda v: (v - 32) * 5/9,
+        
+        # Volumen
+        ('ml', 'l'): lambda v: v * 0.001,
+        ('ml', 'm³'): lambda v: v * 0.000001,
+        ('l', 'm³'): lambda v: v * 0.001,
+        ('gal', 'l'): lambda v: v * 3.78541,
+        
+        # Flujo (EXPANDIDAS)
+        ('m³/s', 'L/s'): lambda v: v * 1000,
+        ('m³/s', 'gal/min'): lambda v: v * 15850.3,
+        ('m³/s', 'm³/h'): lambda v: v * 3600,
+        ('m³/h', 'L/s'): lambda v: v * (1000 / 3600),  
+        ('gal/min', 'L/s'): lambda v: v * 0.0630902,
+        ('m³/h', 'gal/min'): lambda v: v * 4.40287,
+        ('L/min', 'm³/h'): lambda v: v * (0.06 / 1000),  
+        ('gal/s', 'm³/s'): lambda v: v * 0.00378541  
+    }
     
     def convert(self, value: float, from_unit: str, to_unit: str) -> float:
         if from_unit == to_unit:
@@ -127,7 +128,7 @@ class RecordFormatter(IRecordFormatter):
                 try:
                     flags_value = int(flags_raw)
                 except (TypeError, ValueError):
-                    flags_value = 0
+                    flags_value = 0 
                 
             if tipo_registro == "Medidor":
                 return (

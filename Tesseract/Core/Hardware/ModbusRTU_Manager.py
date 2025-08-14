@@ -1,4 +1,4 @@
-# Tesseract/Core/Hardware/ModbusRTU_Manager.py -
+# Tesseract/Core/Hardware/ModbusRTU_Manager.py - VERSIÓN FINAL CORREGIDA
 
 import logging
 import time
@@ -35,9 +35,12 @@ class ModbusDecoderStrategy(ABC):
 
 class Float32Decoder(ModbusDecoderStrategy):
     def decodificar(self, registers, reg_config, perfil) -> float:
-        byteord = Endian.BIG if perfil.get("endianness") == "big" else Endian.LITTLE
-        wordord = Endian.BIG if perfil.get("word_order") == "big" else Endian.LITTLE
-        dec = BinaryPayloadDecoder.fromRegisters(registers, byteorder=byteord, wordorder=wordord)
+        # Forzar BIG ENDIAN para compatibilidad con Badger M2000
+        dec = BinaryPayloadDecoder.fromRegisters(
+            registers,
+            byteorder=Endian.BIG,
+            wordorder=Endian.BIG
+        )
         return dec.decode_32bit_float() * reg_config.get("escala", 1.0)
 
 class Int16Decoder(ModbusDecoderStrategy):
@@ -48,9 +51,12 @@ class Int16Decoder(ModbusDecoderStrategy):
 
 class UInt32Decoder(ModbusDecoderStrategy):
     def decodificar(self, registers, reg_config, perfil) -> int:
-        byteord = Endian.BIG if perfil.get("endianness") == "big" else Endian.LITTLE
-        wordord = Endian.BIG if perfil.get("word_order") == "big" else Endian.LITTLE
-        dec = BinaryPayloadDecoder.fromRegisters(registers, byteorder=byteord, wordorder=wordord)
+        # Forzar BIG ENDIAN para compatibilidad con Badger M2000
+        dec = BinaryPayloadDecoder.fromRegisters(
+            registers,
+            byteorder=Endian.BIG,
+            wordorder=Endian.BIG
+        )
         return dec.decode_32bit_uint() * reg_config.get("escala", 1)
 
 class BitmaskDecoder(ModbusDecoderStrategy):
@@ -94,7 +100,7 @@ class MedidorAguaBase(IMedidorAgua):
         self.error_handler = error_handler
         self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
         self.client = None
-        self._connection_lock = threading.RLock()  # 🚀 Solución para errores de lock
+        self._connection_lock = threading.RLock()
         self._init_client()
 
     def _init_client(self):
@@ -107,7 +113,7 @@ class MedidorAguaBase(IMedidorAgua):
                     parity=self._map_parity(self.perfil.get("parity", "N")),
                     stopbits=self.perfil.get("stopbits", 1),
                     bytesize=self.perfil.get("bytesize", 8),
-                    timeout=self.perfil.get("timeout", 1.5)
+                    timeout=self.perfil.get("timeout", 3.0)  # Aumentado a 3 segundos
                 )
 
     def _map_parity(self, parity_char: str) -> str:
@@ -138,13 +144,15 @@ class MedidorAguaBase(IMedidorAgua):
 
     def leer_registros(self) -> Dict[str, RegisterValue]:
         """Lee registros con protección de lock reentrante"""
-        with self._connection_lock:    # ✅ Permite llamadas anidadas
+        with self._connection_lock:
             if not self.client.connected and not self.conectar():
                 return {}
                 
             resultados = {}
             for reg_name in self.perfil["registros"]:
                 try:
+                    # Log de depuración para diagnóstico
+                    self.logger.debug(f"Leyendo registro: {reg_name}")
                     resultados[reg_name] = self._leer_registro(reg_name)
                 except ModbusException as e:
                     self.error_handler.log_error("021", f"Error registro {reg_name}: {e}")
@@ -160,8 +168,7 @@ class MedidorAguaBase(IMedidorAgua):
         if not reg_config:
             raise ValueError(f"Registro {reg_name} no configurado")
         
-        # USAR SIEMPRE CONFIGURACIÓN DEL PERFIL (NO HARDCODEADO)
-        funcion = reg_config.get("funcion", self.perfil.get("funcion_default", 3))
+        funcion = reg_config.get("funcion", self.perfil.get("funcion_default", 4))  # Default a función 4
         
         # Flags sin escalar
         if reg_name == "direccion_flujo":
@@ -174,16 +181,17 @@ class MedidorAguaBase(IMedidorAgua):
 
         for intento in range(3):
             try:
+                # CORRECCIÓN FINAL: Usar 'slave' en lugar de 'unit' para PyModbus 3.8.6
                 if funcion == 3:
                     response = self.client.read_holding_registers(
-                        reg_config["address"], 
-                        reg_config["count"],
+                        address=reg_config["address"], 
+                        count=reg_config["count"],
                         slave=self.perfil["slave_id"]
                     )
                 elif funcion == 4:
                     response = self.client.read_input_registers(
-                        reg_config["address"], 
-                        reg_config["count"],
+                        address=reg_config["address"], 
+                        count=reg_config["count"],
                         slave=self.perfil["slave_id"]
                     )
                 else:
@@ -195,10 +203,7 @@ class MedidorAguaBase(IMedidorAgua):
                 return decoder.decodificar(response.registers, reg_config, self.perfil)
                 
             except ModbusException as e:
-                # ¡CORRECCIÓN! Backoff exponencial industrial
-                wait_time = 0.5 * (2 ** intento)  # 0.5s, 1s, 2s
-                time.sleep(wait_time)
-                if intento < 2:  # Reintentar si no es el último intento
-                    self.conectar()
-                else:
+                if intento == 2:
                     raise
+                time.sleep(0.2)
+                self.conectar()

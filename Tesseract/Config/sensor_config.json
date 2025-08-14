@@ -11,16 +11,16 @@
       "bytesize": 8,
       "timeout": 2,
       "endianness": "big",
-      "word_order": "little",
-      "funcion_default": 3,
+      "word_order": "big",  
+      "funcion_default": 4,
       "registros": {
         "flujo_instantaneo": {
-          "address": 241,
+          "address": 241,  
           "count": 2,
           "data_type": "float32",
-          "escala": 1,
-          "unidad": "L/s",
-          "funcion": 3,
+          "escala": 1.0,  
+          "unidad": "m³/s",
+          "funcion": 4,
           "widget_ui": {
             "tipo": "GAUGE_LARGE",
             "posicion": [0, 0],
@@ -30,12 +30,12 @@
           }
         },
         "flujo_acumulado": {
-          "address": 211,
+          "address": 211, 
           "count": 2,
           "data_type": "float32",
-          "escala": 1,
+          "escala": 1.0,
           "unidad": "m³",
-          "funcion": 3,
+          "funcion": 4,
           "widget_ui": {
             "tipo": "GAUGE_LARGE",
             "posicion": [0, 1],
@@ -48,8 +48,7 @@
           "address": 301,
           "count": 1,
           "data_type": "int16",
-          "funcion": 3,
-          "no_escalar": true,
+          "funcion": 4,
           "widget_ui": {
             "tipo": "LED_INDICATOR",
             "posicion": [1, 0],
@@ -58,10 +57,11 @@
             "etiqueta": "Flujo positivo"
           }
         },
-        "contador_energización": {
+        "contador_energizacion": {
           "address": 245,
           "count": 1,
           "data_type": "int16",
+          "funcion": 4,
           "descripcion": "Contador de encendidos"
         },
         "errores_sensor": {
@@ -72,12 +72,14 @@
             "0": "sensor_fault",
             "1": "over_range",
             "2": "empty_pipe"
-          }
+          },
+          "funcion": 4
         },
         "codigo_error": {
           "address": 257,
           "count": 1,
           "data_type": "int16",
+          "funcion": 4,
           "descripcion": "Código de error del sistema"
         }
       },
@@ -96,13 +98,21 @@
       "widget_layout": "BASIC"
     },
     {
+      "nombre": "Badger M2000 - Básico sin Opcionales",
+      "modelo": "Badger ModMAG® M2000",
+      "registros_habilitados": ["flujo_instantaneo", "flujo_acumulado", "direccion_flujo"],
+      "widget_layout": "BASIC"  
+    },
+    {
       "nombre": "Badger M2000 - Completo",
       "modelo": "Badger ModMAG® M2000",
       "registros_habilitados": [
         "flujo_instantaneo",
         "flujo_acumulado",
         "direccion_flujo",
-        "errores_sensor"
+        "contador_energizacion",
+        "errores_sensor",
+        "codigo_error"
       ],
       "widget_layout": "FULL"
     }
@@ -114,7 +124,7 @@
     "bytesize": 8,
     "timeout": 2,
     "endianness": "big",
-    "word_order": "little",
-    "funcion_default": 3
+    "word_order": "big",  
+    "funcion_default": 4
   }
 }
