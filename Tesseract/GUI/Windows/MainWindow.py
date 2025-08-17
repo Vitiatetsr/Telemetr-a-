@@ -118,8 +118,8 @@ class MainWindow(QMainWindow):
         self.dashboard_window.medidor = self.medidor
         self.config_window.medidor = self.medidor
         
-        # Iniciar adquisición de datos en el dashboard
-        self.dashboard_window.setup_data_acquisition()
+        if hasattr(self.dashboard_window, 'setup_timers'):
+            self.dashboard_window.setup_timers()  # ✅ Nuevo método
         
         # Cargar configuración inicial en la ventana de configuración
         if hasattr(self.config_window, 'load_initial_config'):
@@ -128,13 +128,3 @@ class MainWindow(QMainWindow):
         # Mostrar estado
         self.show_warning("✅ Sistema operativo iniciado")
             
-    def start_system_services(self):
-        """Iniciar servicios en segundo plano (si es necesario)"""
-        try:
-            # Iniciar el planificador de archivos si está habilitado
-            if self.file_scheduler and not self.file_scheduler._scheduler.running:
-                self.file_scheduler.iniciar()
-                self.show_warning("✅ Servicios del sistema iniciados")
-        except Exception as e:
-            self.error_handler.log_error("MAIN_START", f"Error iniciando servicios: {e}")
-            QMessageBox.critical(self, "Error", f"No se pudo iniciar sistema: {str(e)}")

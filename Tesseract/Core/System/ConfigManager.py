@@ -16,6 +16,12 @@ class ConfigManager:
     
     _cache = {}
 
+    @staticmethod
+    def _validar_unidad(unidad: str):
+        unidades_validas = ["L/s", "m³/h", "GPM"]
+        if unidad not in unidades_validas:
+            raise ValueError(f"Unidad no válida: {unidad}. Use: {', '.join(unidades_validas)}")
+    
     @classmethod
     def cargar_config_general(cls) -> Dict[str, Any]:
         if 'general' in cls._cache:
@@ -27,7 +33,7 @@ class ConfigManager:
                 raise ValueError(f"Falta '{key}' en {cls.GENERAL_CONFIG}")
             
         # Unidad por defecto garantizada
-        cfg.setdefault("unidad_visualizacion", "L/s")
+        cfg.setdefault("unidad_visualizacion", "m³/h")
         
         # NUEVO: Valor por defecto para Windows 10
         cfg.setdefault("storage_path", "D:\\TesseractData") 

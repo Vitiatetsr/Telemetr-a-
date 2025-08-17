@@ -1,4 +1,3 @@
-# Tesseract/GUI/Windows/ConfigWindow.py
 
 # Tesseract/GUI/Windows/ConfigWindow.py
 

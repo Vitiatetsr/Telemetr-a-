@@ -27,6 +27,10 @@ class IMedidorAgua(ABC):
     def desconectar(self):
         pass
 
+    @abstractmethod
+    def obtener_unidad_flujo(self) -> str:
+        pass
+
 class ModbusDecoderStrategy(ABC):
     """Estrategia para decodificación de registros"""
     @abstractmethod
@@ -35,13 +39,17 @@ class ModbusDecoderStrategy(ABC):
 
 class Float32Decoder(ModbusDecoderStrategy):
     def decodificar(self, registers, reg_config, perfil) -> float:
-        # Forzar BIG ENDIAN para compatibilidad con Badger M2000
         dec = BinaryPayloadDecoder.fromRegisters(
             registers,
             byteorder=Endian.BIG,
             wordorder=Endian.BIG
         )
-        return dec.decode_32bit_float() * reg_config.get("escala", 1.0)
+        valor = dec.decode_32bit_float()
+        
+        # SOLUCIÓN: Solo escalar si NO es unidad de usuario
+        if "unidad_medidor" in reg_config and reg_config["unidad_medidor"] == "user_units":
+            return valor
+        return valor * reg_config.get("escala", 1.0)
 
 class Int16Decoder(ModbusDecoderStrategy):
     def decodificar(self, registers, reg_config, perfil) -> int:
@@ -102,6 +110,8 @@ class MedidorAguaBase(IMedidorAgua):
         self.client = None
         self._connection_lock = threading.RLock()
         self._init_client()
+        self._unidad_flujo_cache = "m³/h"  # Valor por defecto
+        self._ultima_lectura_unidad = 0
 
     def _init_client(self):
         """Inicializa o reinicializa el cliente Modbus"""
@@ -119,7 +129,7 @@ class MedidorAguaBase(IMedidorAgua):
     def _map_parity(self, parity_char: str) -> str:
         mapping = {'N': 'N', 'E': 'E', 'O': 'O'}
         return mapping.get(parity_char.upper(), 'N')
-
+    
     def conectar(self) -> bool:
         with self._connection_lock:
             if self.client.connected:
@@ -142,6 +152,23 @@ class MedidorAguaBase(IMedidorAgua):
                 except Exception as e:
                     self.error_handler.log_error("015", f"Error desconexión: {e}")
 
+    def obtener_unidad_flujo(self) -> str:
+        """Obtiene la unidad de flujo con caché para mejor rendimiento"""
+        ahora = time.time()
+        if ahora - self._ultima_lectura_unidad > 60:  # Actualizar cada minuto
+            try:
+                registro = self._leer_registro("unidad_flujo")
+                unidades = {
+                    0: "L/s", 1: "L/min", 2: "L/h", 3: "m³/s", 4: "m³/min",
+                    5: "m³/h", 6: "ft³/s", 7: "ft³/min", 8: "ft³/h",
+                    9: "gal/s", 10: "GPM", 11: "gal/h", 12: "MGD"
+                }
+                self._unidad_flujo_cache = unidades.get(registro, "m³/h")
+                self._ultima_lectura_unidad = ahora
+            except Exception as e:
+                self.error_handler.log_error("UNIDAD_FLUJO", f"Error leyendo unidad: {e}")
+        return self._unidad_flujo_cache
+    
     def leer_registros(self) -> Dict[str, RegisterValue]:
         """Lee registros con protección de lock reentrante"""
         with self._connection_lock:

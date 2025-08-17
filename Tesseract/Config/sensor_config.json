@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "sensores": [
     {
       "modelo": "Badger ModMAG® M2000",
@@ -14,12 +14,20 @@
       "word_order": "big",  
       "funcion_default": 4,
       "registros": {
+        "unidad_flujo": {
+          "address": 131,
+          "count": 1,
+          "data_type": "int16",
+          "no_escalar": true,
+          "funcion": 4,
+          "descripcion": "Unidad de flujo configurada en el medidor"
+        },
         "flujo_instantaneo": {
-          "address": 241,  
+          "address": 241,
           "count": 2,
           "data_type": "float32",
-          "escala": 1.0,  
-          "unidad": "m³/s",
+          "unidad_medidor": "user_units",
+          "escala": 1.0,
           "funcion": 4,
           "widget_ui": {
             "tipo": "GAUGE_LARGE",
@@ -30,11 +38,11 @@
           }
         },
         "flujo_acumulado": {
-          "address": 211, 
+          "address": 211,
           "count": 2,
           "data_type": "float32",
+          "unidad_medidor": "user_units",
           "escala": 1.0,
-          "unidad": "m³",
           "funcion": 4,
           "widget_ui": {
             "tipo": "GAUGE_LARGE",
@@ -94,19 +102,29 @@
     {
       "nombre": "Badger M2000 - Básico",
       "modelo": "Badger ModMAG® M2000",
-      "registros_habilitados": ["flujo_instantaneo", "flujo_acumulado"],
+      "registros_habilitados": [
+        "unidad_flujo",
+        "flujo_instantaneo",
+        "flujo_acumulado"
+      ],
       "widget_layout": "BASIC"
     },
     {
       "nombre": "Badger M2000 - Básico sin Opcionales",
       "modelo": "Badger ModMAG® M2000",
-      "registros_habilitados": ["flujo_instantaneo", "flujo_acumulado", "direccion_flujo"],
+      "registros_habilitados": [
+        "unidad_flujo",
+        "flujo_instantaneo",
+        "flujo_acumulado",
+        "direccion_flujo"
+      ],
       "widget_layout": "BASIC"  
     },
     {
       "nombre": "Badger M2000 - Completo",
       "modelo": "Badger ModMAG® M2000",
       "registros_habilitados": [
+        "unidad_flujo",
         "flujo_instantaneo",
         "flujo_acumulado",
         "direccion_flujo",
@@ -125,6 +143,22 @@
     "timeout": 2,
     "endianness": "big",
     "word_order": "big",  
-    "funcion_default": 4
+    "funcion_default": 4,
+    "unidad_flujo_default": "m³/h"
+  },
+  "mapeo_unidades": {
+    "0": "L/s",
+    "1": "L/min",
+    "2": "L/h",
+    "3": "m³/s",
+    "4": "m³/min",
+    "5": "m³/h",
+    "6": "ft³/s",
+    "7": "ft³/min",
+    "8": "ft³/h",
+    "9": "gal/s",
+    "10": "GPM",
+    "11": "gal/h",
+    "12": "MGD"
   }
 }

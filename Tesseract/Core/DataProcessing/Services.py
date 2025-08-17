@@ -27,38 +27,32 @@ class BitmaskConverter(IBitmaskConverter):
         return value
 
 class UnitConverter(IUnitConverter):
-    # Estrategias como propiedad de CLASE (expandida para más flujos genéricos)
     CONVERSION_STRATEGIES = {
-        # Temperatura
-        ('°C', '°F'): lambda v: (v * 9/5) + 32,
-        ('°F', '°C'): lambda v: (v - 32) * 5/9,
+        # Conversiones directas entre unidades de flujo
+        ('m³/h', 'L/s'): lambda v: v * (1000 / 3600),
+        ('m³/h', 'GPM'): lambda v: v * 4.40287,
+        ('L/s', 'm³/h'): lambda v: v * (3600 / 1000),
+        ('L/s', 'GPM'): lambda v: v * 15.8503,
+        ('GPM', 'm³/h'): lambda v: v * 0.227125,
+        ('GPM', 'L/s'): lambda v: v * 0.0630902,
         
-        # Volumen
-        ('ml', 'l'): lambda v: v * 0.001,
-        ('ml', 'm³'): lambda v: v * 0.000001,
-        ('l', 'm³'): lambda v: v * 0.001,
-        ('gal', 'l'): lambda v: v * 3.78541,
-        
-        # Flujo (EXPANDIDAS)
-        ('m³/s', 'L/s'): lambda v: v * 1000,
-        ('m³/s', 'gal/min'): lambda v: v * 15850.3,
-        ('m³/s', 'm³/h'): lambda v: v * 3600,
-        ('m³/h', 'L/s'): lambda v: v * (1000 / 3600),  
-        ('gal/min', 'L/s'): lambda v: v * 0.0630902,
-        ('m³/h', 'gal/min'): lambda v: v * 4.40287,
-        ('L/min', 'm³/h'): lambda v: v * (0.06 / 1000),  
-        ('gal/s', 'm³/s'): lambda v: v * 0.00378541  
+        # Conversiones para volumen
+        ('m³', 'L'): lambda v: v * 1000,
+        ('m³', 'gal'): lambda v: v * 264.172,
+        ('L', 'm³'): lambda v: v * 0.001,
+        ('gal', 'm³'): lambda v: v * 0.00378541
     }
     
     def convert(self, value: float, from_unit: str, to_unit: str) -> float:
         if from_unit == to_unit:
             return value
             
-        strategy_key = (from_unit, to_unit)
-        if strategy_key in self.CONVERSION_STRATEGIES:
-            return self.CONVERSION_STRATEGIES[strategy_key](value)
+        # Intentar conversión directa
+        direct_key = (from_unit, to_unit)
+        if direct_key in self.CONVERSION_STRATEGIES:
+            return self.CONVERSION_STRATEGIES[direct_key](value)
             
-        # Búsqueda de estrategia inversa
+        # Intentar conversión inversa
         reverse_key = (to_unit, from_unit)
         if reverse_key in self.CONVERSION_STRATEGIES:
             reverse_fn = self.CONVERSION_STRATEGIES[reverse_key]

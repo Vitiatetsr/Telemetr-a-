@@ -80,9 +80,8 @@ class TesseractApp(QApplication):
             file_scheduler=self.file_scheduler
         )
         
-        # FORZAR INICIO AUNQUE FALTEN CONFIGURACIONES
-        if hasattr(self.main_window, 'start_system_services'):
-            self.main_window.start_system_services()
+        # >>>>> CORRECCIÓN PRINCIPAL: INICIAR SERVICIOS ANTES DE MOSTRAR VENTANA <<<<<
+        self.start_system_services()
         
         # Mensaje informativo en lugar de bloqueante
         if not StateManager.is_system_ready():
@@ -98,15 +97,17 @@ class TesseractApp(QApplication):
     
     def start_system_services(self):
         try:
+            # >>>>> CORRECCIÓN: INICIAR FILE_SCHEDULER SI ESTÁ HABILITADO <<<<<
             if self.file_scheduler.config.get("enabled", True):
-                self.file_scheduler.iniciar()
-                logging.info("FileScheduler iniciado")
+                # Verificar si ya está iniciado
+                if not (hasattr(self.file_scheduler, '_scheduler') 
+                        and self.file_scheduler._scheduler 
+                        and self.file_scheduler._scheduler.running):
+                    self.file_scheduler.iniciar()
+                    logging.info("FileScheduler iniciado")
             
-            # Iniciar monitoreo si el dashboard existe
-            if hasattr(self.main_window, 'dashboard_window'):
-                self.main_window.dashboard_window.setup_data_acquisition()
-                logging.info("Monitoreo iniciado")
-                
+            # >>>>> ELIMINADO: No iniciar dashboard aquí (ya se hace en MainWindow)
+            
         except Exception as e:
             self.error_handler.log_error("APP_START", f"Error iniciando servicios: {e}")
 

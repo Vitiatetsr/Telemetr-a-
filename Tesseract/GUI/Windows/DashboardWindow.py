@@ -1,340 +1,295 @@
-# Tesseract/GUI/Windows/DashboardWindow.py 
+# Tesseract/GUI/Windows/DashboardWindow.py
 
-import time
 import logging
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGridLayout, QLabel, QGroupBox)
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QMutex, Qt, QMutexLocker
-from PyQt5.QtGui import QFont, QColor
-from Core.Hardware.ModbusRTU_Manager import MedidorAguaBase
-from Core.System.ConfigManager import ConfigManager
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QColor, QPalette
 from Core.DataProcessing.Services import UnitConverter
-from Core.System import StateManager
-
-class DataAcquisitionThread(QThread):
-    new_data = pyqtSignal(dict)
-    
-    def __init__(self, medidor):
-        super().__init__()
-        self.medidor = medidor
-        self._mutex = QMutex()
-        self._running = True
-        self._last_data = {}
-        
-    def run(self):
-        while self._running:
-            try:
-                data = self.medidor.leer_registros()
-                
-                with QMutexLocker(self._mutex):
-                    self._last_data = data
-                
-                if self.receivers(self.new_data) > 0:
-                    self.new_data.emit(data)
-                    
-                time.sleep(1)  
-                    
-            except Exception as e:
-                if self.medidor and hasattr(self.medidor, 'error_handler'):
-                    self.medidor.error_handler.log_error("DASH_ACQ", f"Error adquisición: {e}")
-                else:
-                    logging.error(f"Error adquisición: {e}")
-                time.sleep(1)
-    
-    def stop(self):
-        self._running = False
-        self.wait()
-        
-    def get_last_data(self):
-        with QMutexLocker(self._mutex):
-            return self._last_data.copy()
+from Core.System.ConfigManager import ConfigManager
+from Core.System.ErrorHandler import ErrorHandler
+from Core.System.StateManager import StateManager
 
 class DashboardWindow(QWidget):
-    def __init__(self, medidor, error_handler):
+    def __init__(self, medidor, error_handler: ErrorHandler):
         super().__init__()
-        # Medidor puede ser None inicialmente
         self.medidor = medidor
         self.error_handler = error_handler
+        self.config_manager = ConfigManager()
         self.unit_converter = UnitConverter()
-        self.display_unit = "L/s"
-        self.base_unit = "m³/h"
-        self.convert_fn = lambda x: x
         
-        # INICIALIZACIÓN TEMPRANA DE ATRIBUTOS CRÍTICOS
-        self.last_update_time = time.time()
-        self.last_data = {}
+        # Estado inicial
+        self.unidad_medidor = "m³/h"  # Valor por defecto hasta lectura
+        self.unidad_visual = self.config_manager.cargar_config_general().get("unidad_visualizacion", "m³/h")
+        self.unidad_volumen = "m³"    # Unidad base para volumen (no configurable)
         
-        # Widgets de estadísticas
-        self.lbl_energizacion = QLabel("N/A") 
-        self.lbl_errores = QLabel("N/A")
-        self.lbl_cod_error = QLabel("N/A")
-        
-        # Configurar UI incluso si medidor es None
-        self.setup_unit_conversion()
+        # Inicializar UI
         self.setup_ui()
-        self.setup_extra_ui()
         
-    def setup_extra_ui(self):
-        # Grupo: información Adicional
-        extra_group = QGroupBox("Estadísticas del Sensor")
-        extra_layout = QGridLayout()
+        # Configurar temporizadores
+        self.setup_timers()
         
-        # Contador de encendidos
-        extra_layout.addWidget(QLabel("Encendidos:"), 0, 0)
-        self.lbl_energizacion.setFont(QFont("Arial", 12))
-        self.lbl_energizacion.setToolTip("Número total de encendidos del sensor")
-        extra_layout.addWidget(self.lbl_energizacion, 0, 1)
-        
-        # Errores activos
-        extra_layout.addWidget(QLabel("Errores:"), 1, 0)
-        self.lbl_errores.setFont(QFont("Arial", 12))
-        self.lbl_errores.setToolTip("Errores activos en el detector")
-        extra_layout.addWidget(self.lbl_errores, 1, 1)
-        
-        # Código de error
-        extra_layout.addWidget(QLabel("Código Error:"), 2, 0)
-        self.lbl_cod_error.setFont(QFont("Consolas", 10))
-        self.lbl_cod_error.setToolTip("Código hexadecimal de error del sistema")
-        extra_layout.addWidget(self.lbl_cod_error, 2, 1)
-        
-        extra_group.setLayout(extra_layout)
-        self.layout().insertWidget(2, extra_group)
-
-    def setup_unit_conversion(self):
-        """Configura conversión de unidades eficiente"""
-        try:
-            # Manejar caso donde medidor o perfil no están disponibles
-            if not self.medidor or "registros" not in self.medidor.perfil:
-                self.base_unit = "m³/s"
-                config = ConfigManager.cargar_config_general()
-                self.display_unit = config.get("unidad_visualizacion", "L/s")
-                self.convert_fn = lambda x: x
-                return
-                
-            reg_config = self.medidor.perfil["registros"].get(
-                "flujo_instantaneo", 
-                {"unidad": "m³/s"}  # Valor por defecto
-            )
-            self.base_unit = reg_config.get("unidad", "m³/s")
-        
-            config = ConfigManager.cargar_config_general()
-            self.display_unit = config.get("unidad_visualizacion", "L/s")
-        
-            if self.base_unit == self.display_unit:
-                self.convert_fn = lambda x: x
-            else:
-                strategy = self.get_conversion_strategy(self.base_unit, self.display_unit)
-                self.convert_fn = lambda x: strategy(x)
-        except Exception as e:
-            self.error_handler.log_error("DASH_UNIT", f"Error configuración unidades: {e}")
-            self.convert_fn = lambda x: x
-
-    def get_conversion_strategy(self, from_unit: str, to_unit: str):
-        converter = UnitConverter()
-        key = (from_unit, to_unit)
-        if key in converter.CONVERSION_STRATEGIES:
-            return converter.CONVERSION_STRATEGIES[key]
-        
-        reverse_key = (to_unit, from_unit)
-        if reverse_key in converter.CONVERSION_STRATEGIES:
-            reverse_fn = converter.CONVERSION_STRATEGIES[reverse_key]
-            return lambda x: x / reverse_fn(1) if reverse_fn(1) != 0 else x
-        
-        self.error_handler.log_error("UNIT_CONV", f"Conversión no soportada: {from_unit}→{to_unit}")
-        return lambda x: x
+        # Cargar configuración inicial
+        self.actualizar_unidades()
 
     def setup_ui(self):
+        """Configura todos los elementos de la interfaz de usuario"""
         main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
         main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(15)
         
-        data_group = QGroupBox("Medición en Tiempo Real")
+        # Panel de título
+        title_layout = QHBoxLayout()
+        self.title_label = QLabel("DASHBOARD DE MONITOREO")
+        self.title_label.setStyleSheet("font-size: 16pt; font-weight: bold;")
+        title_layout.addWidget(self.title_label)
+        
+        # Estado del sistema
+        self.system_status = QLabel("✅ Sistema operativo")
+        self.system_status.setStyleSheet("color: green; font-weight: bold;")
+        title_layout.addStretch()
+        title_layout.addWidget(self.system_status)
+        
+        main_layout.addLayout(title_layout)
+        
+        # Separador
+        separator = QLabel()
+        separator.setStyleSheet("background-color: #CCCCCC; height: 2px;")
+        main_layout.addWidget(separator)
+        
+        # Panel de datos principales
         data_layout = QGridLayout()
+        data_layout.setSpacing(15)
         
-        data_layout.addWidget(QLabel("Flujo Instantáneo:"), 0, 0)
-        data_layout.addWidget(QLabel("Flujo Acumulado:"), 1, 0)
-        data_layout.addWidget(QLabel("Estado:"), 2, 0)
-        data_layout.addWidget(QLabel("Última Actualización:"), 3, 0)
+        # Flujo instantáneo
+        flow_label = QLabel("FLUJO INSTANTÁNEO:")
+        flow_label.setStyleSheet("font-weight: bold;")
+        self.flow_value = QLabel("--")
+        self.flow_value.setStyleSheet("font-size: 24pt; color: #0066CC;")
+        self.flow_unit = QLabel("m³/h")
+        self.flow_unit.setStyleSheet("font-size: 14pt;")
         
-        self.lbl_instant = QLabel(f"0.00 {self.display_unit}")
-        self.lbl_instant.setFont(QFont("Arial", 24, QFont.Bold))
-        self.lbl_instant.setStyleSheet("color: #2E86C1;")
-        data_layout.addWidget(self.lbl_instant, 0, 1)
+        data_layout.addWidget(flow_label, 0, 0)
+        data_layout.addWidget(self.flow_value, 1, 0)
+        data_layout.addWidget(self.flow_unit, 1, 1)
         
-        self.lbl_accumulated = QLabel("0.00 m³")
-        self.lbl_accumulated.setFont(QFont("Arial", 24, QFont.Bold))
-        self.lbl_accumulated.setStyleSheet("color: #27AE60;")
-        data_layout.addWidget(self.lbl_accumulated, 1, 1)
+        # Volumen acumulado
+        volume_label = QLabel("VOLUMEN ACUMULADO:")
+        volume_label.setStyleSheet("font-weight: bold;")
+        self.volume_value = QLabel("--")
+        self.volume_value.setStyleSheet("font-size: 20pt; color: #009900;")
+        self.volume_unit = QLabel("m³")
+        self.volume_unit.setStyleSheet("font-size: 14pt;")
         
-        self.lbl_status = QLabel("INICIALIZANDO...")
-        self.lbl_status.setFont(QFont("Arial", 14))
-        data_layout.addWidget(self.lbl_status, 2, 1)
+        data_layout.addWidget(volume_label, 0, 1)
+        data_layout.addWidget(self.volume_value, 1, 1)
+        data_layout.addWidget(self.volume_unit, 1, 2)
         
-        self.lbl_timestamp = QLabel("--")
-        self.lbl_timestamp.setFont(QFont("Arial", 10))
-        data_layout.addWidget(self.lbl_timestamp, 3, 1)
+        # Dirección de flujo
+        direction_label = QLabel("DIRECCIÓN DE FLUJO:")
+        direction_label.setStyleSheet("font-weight: bold;")
+        self.direction_value = QLabel("--")
+        self.direction_value.setStyleSheet("font-size: 18pt;")
         
-        data_group.setLayout(data_layout)
-        main_layout.addWidget(data_group)
+        data_layout.addWidget(direction_label, 2, 0)
+        data_layout.addWidget(self.direction_value, 3, 0)
         
-        flags_group = QGroupBox("Estado del Sistema")
-        flags_layout = QVBoxLayout()
+        main_layout.addLayout(data_layout)
         
-        self.lbl_flags = QLabel("Sin alertas")
-        self.lbl_flags.setFont(QFont("Arial", 10))
-        self.lbl_flags.setStyleSheet("color: #7D3C98;")
-        flags_layout.addWidget(self.lbl_flags)
+        # Panel de información del sistema
+        info_layout = QHBoxLayout()
+        info_layout.setSpacing(10)
         
-        flags_group.setLayout(flags_layout)
-        main_layout.addWidget(flags_group)
-
-        main_layout.addStretch()
+        # Unidades
+        unit_box = QWidget()
+        unit_box.setStyleSheet("background-color: #F0F0F0; border-radius: 5px; padding: 10px;")
+        unit_layout = QVBoxLayout(unit_box)
+        
+        unit_title = QLabel("CONFIGURACIÓN DE UNIDADES")
+        unit_title.setStyleSheet("font-weight: bold;")
+        unit_layout.addWidget(unit_title)
+        
+        self.medidor_unit_label = QLabel("Medidor: Cargando...")
+        self.visual_unit_label = QLabel("Visualización: Cargando...")
+        
+        unit_layout.addWidget(self.medidor_unit_label)
+        unit_layout.addWidget(self.visual_unit_label)
+        info_layout.addWidget(unit_box)
+        
+        # Estado de conexión
+        status_box = QWidget()
+        status_box.setStyleSheet("background-color: #F0F0F0; border-radius: 5px; padding: 10px;")
+        status_layout = QVBoxLayout(status_box)
+        
+        status_title = QLabel("ESTADO DE CONEXIÓN")
+        status_title.setStyleSheet("font-weight: bold;")
+        status_layout.addWidget(status_title)
+        
+        self.connection_status = QLabel("Desconectado")
+        self.connection_status.setStyleSheet("color: #FF0000; font-weight: bold;")
+        
+        self.last_update = QLabel("Última actualización: --:--:--")
+        
+        status_layout.addWidget(self.connection_status)
+        status_layout.addWidget(self.last_update)
+        info_layout.addWidget(status_box)
+        
+        main_layout.addLayout(info_layout)
+        
         self.setLayout(main_layout)
-        
-        self.ui_timer = QTimer()
-        self.ui_timer.setInterval(500)
-        self.ui_timer.timeout.connect(self.update_ui)
-        self.ui_timer.start()
 
-    def setup_data_acquisition(self):
-        """Inicia monitoreo si el medidor está disponible"""
-        if self.medidor is None:
-            self.lbl_status.setText("MEDIDOR NO CONFIGURADO")
-            self.lbl_status.setStyleSheet("color: red; font-weight: bold;")
-            return
+    def setup_timers(self):
+        """Configura los temporizadores para actualización automática"""
+        # Temporizador para datos rápidos (1 segundo)
+        self.data_timer = QTimer(self)
+        self.data_timer.timeout.connect(self.actualizar_datos)
+        self.data_timer.start(1000)  # 1 segundo
         
-        self.data_thread = DataAcquisitionThread(self.medidor)
-        self.data_thread.new_data.connect(self.on_new_data)
-        self.data_thread.start()
+        # Temporizador para actualización de unidades (60 segundos)
+        self.unit_timer = QTimer(self)
+        self.unit_timer.timeout.connect(self.actualizar_unidades)
+        self.unit_timer.start(60000)  # 60 segundos
         
-        # Opcional: reiniciar valores
-        self.last_update_time = time.time()
-        self.last_data = {}
-        self.lbl_status.setText("CONECTANDO...")
-        
-    def on_new_data(self, data):
-        self.last_data = data
-        self.last_update_time = time.time()
-        
+        # Temporizador para estado de conexión (5 segundos)
+        self.connection_timer = QTimer(self)
+        self.connection_timer.timeout.connect(self.verificar_conexion)
+        self.connection_timer.start(5000)  # 5 segundos
+
+    def verificar_conexion(self):
+        """Actualiza el estado de conexión en la UI"""
+        try:
+            if self.medidor and hasattr(self.medidor, 'client') and self.medidor.client.connected:
+                self.connection_status.setText("Conectado")
+                self.connection_status.setStyleSheet("color: #009900; font-weight: bold;")
+            else:
+                self.connection_status.setText("Desconectado")
+                self.connection_status.setStyleSheet("color: #FF0000; font-weight: bold;")
+        except Exception as e:
+            self.error_handler.log_error("DASH_CONN", f"Error verificando conexión: {str(e)}")
+
+    def actualizar_unidades(self):
+        """Actualiza la información de unidades desde el medidor y configuración"""
+        try:
+            # Obtener unidad del medidor (si está disponible)
+            if self.medidor and hasattr(self.medidor, 'obtener_unidad_flujo'):
+                self.unidad_medidor = self.medidor.obtener_unidad_flujo()
+            
+            # Obtener unidad de visualización desde configuración
+            config = self.config_manager.cargar_config_general()
+            self.unidad_visual = config.get("unidad_visualizacion", "m³/h")
+            
+            # Actualizar UI
+            self.medidor_unit_label.setText(f"Medidor: {self.unidad_medidor}")
+            self.visual_unit_label.setText(f"Visualización: {self.unidad_visual}")
+            self.flow_unit.setText(self.unidad_visual)
+            
+        except Exception as e:
+            self.error_handler.log_error("DASH_UNIT", f"Error actualizando unidades: {str(e)}")
+            # Fallback a valores por defecto
+            self.unidad_medidor = "m³/h"
+            self.unidad_visual = "m³/h"
+
+    def actualizar_datos(self):
+        """Lee datos del medidor y actualiza la interfaz"""
+        try:
+            # Registrar hora de actualización
+            from datetime import datetime
+            self.last_update.setText(f"Última actualización: {datetime.now().strftime('%H:%M:%S')}")
+            
+            # Verificar conexión
+            if not self.medidor or not hasattr(self.medidor, 'leer_registros'):
+                self.system_status.setText("⚠️ Medidor no configurado")
+                self.system_status.setStyleSheet("color: #FF9900; font-weight: bold;")
+                return
+                
+            # Leer datos del medidor
+            datos = self.medidor.leer_registros()
+            
+            # Procesar flujo instantáneo
+            flujo_key = self.medidor.perfil.get("output_mapping", {}).get("flujo_instantaneo", "flujo_instantaneo")
+            flujo_valor = datos.get(flujo_key, 0.0)
+            
+            # Convertir a unidad de visualización
+            flujo_convertido = self.unit_converter.convert(
+                flujo_valor,
+                self.unidad_medidor,
+                self.unidad_visual
+            )
+            
+            # Procesar volumen acumulado
+            volumen_key = self.medidor.perfil.get("output_mapping", {}).get("flujo_acumulado", "flujo_acumulado")
+            volumen_valor = datos.get(volumen_key, 0.0)
+            
+            # Convertir volumen (siempre de m³ a m³)
+            volumen_convertido = self.unit_converter.convert(
+                volumen_valor,
+                "m³",
+                self.unidad_volumen
+            )
+            
+            # Procesar dirección de flujo
+            direccion_key = self.medidor.perfil.get("output_mapping", {}).get("flags", "direccion_flujo")
+            direccion_valor = datos.get(direccion_key, 0)
+            
+            # Actualizar UI
+            self.flow_value.setText(f"{flujo_convertido:.3f}")
+            self.volume_value.setText(f"{volumen_convertido:.2f}")
+            
+            # Dirección de flujo
+            if isinstance(direccion_valor, dict):
+                # Si es un diccionario de bits
+                if direccion_valor.get("forward", False):
+                    self.direction_value.setText("➡️ POSITIVA")
+                    self.direction_value.setStyleSheet("color: #0066CC; font-size: 18pt;")
+                elif direccion_valor.get("reverse", False):
+                    self.direction_value.setText("⬅️ NEGATIVA")
+                    self.direction_value.setStyleSheet("color: #FF6600; font-size: 18pt;")
+                else:
+                    self.direction_value.setText("⏹️ DETENIDO")
+                    self.direction_value.setStyleSheet("color: #999999; font-size: 18pt;")
+            else:
+                # Si es un valor numérico
+                if direccion_valor == 1:
+                    self.direction_value.setText("➡️ POSITIVA")
+                    self.direction_value.setStyleSheet("color: #0066CC; font-size: 18pt;")
+                elif direccion_valor == 2:
+                    self.direction_value.setText("⬅️ NEGATIVA")
+                    self.direction_value.setStyleSheet("color: #FF6600; font-size: 18pt;")
+                else:
+                    self.direction_value.setText("⏹️ DETENIDO")
+                    self.direction_value.setStyleSheet("color: #999999; font-size: 18pt;")
+            
+            # Actualizar estado del sistema
+            self.system_status.setText("✅ Sistema operativo")
+            self.system_status.setStyleSheet("color: #009900; font-weight: bold;")
+            
+        except Exception as e:
+            self.error_handler.log_error("DASH_DATA", f"Error actualizando datos: {str(e)}")
+            self.system_status.setText("⚠️ Error en lectura")
+            self.system_status.setStyleSheet("color: #FF0000; font-weight: bold;")
+            self.flow_value.setText("--")
+            self.volume_value.setText("--")
+            self.direction_value.setText("--")
+
     def refresh_unit_config(self):
-        """Actualizar la configuración de unidades cuando cambia la configuración"""
+        """Actualiza la configuración de unidades (llamado desde MainWindow)"""
         try:
-            self.setup_unit_conversion()
-            self.lbl_instant.setText(f"0.00 {self.display_unit}")
-            if hasattr(self, 'last_data') and self.last_data:
-                raw_flow = self.last_data.get('flujo_instantaneo', 0)
-                display_flow = self.convert_fn(raw_flow)
-                self.lbl_instant.setText(f"{display_flow:.2f} {self.display_unit}")
-            logging.info("Configuración de unidades actualizada")
+            # Obtener nueva unidad de visualización
+            config = self.config_manager.cargar_config_general()
+            self.unidad_visual = config.get("unidad_visualizacion", "m³/h")
+            
+            # Actualizar UI
+            self.visual_unit_label.setText(f"Visualización: {self.unidad_visual}")
+            self.flow_unit.setText(self.unidad_visual)
+            
+            # Forzar actualización de datos
+            self.actualizar_datos()
+            
         except Exception as e:
-            if self.error_handler:
-                self.error_handler.log_error("DASH_REFRESH", f"Error actualizando unidades: {e}")
-            else:
-                logging.error(f"Error actualizando unidades: {e}")
-        
-    def update_ui(self):
-        elapsed = time.time() - self.last_update_time
-        
-        # Mostrar advertencia si no hay datos
-        if not hasattr(self, 'last_data') or not self.last_data:
-            self.lbl_status.setText("ESPERANDO DATOS...")
-            self.lbl_status.setStyleSheet("color: orange;")
-            return
-        
-        # Mostrar advertencia pero CONTINUAR procesando datos
-        if elapsed > 5.0:
-            self.lbl_status.setText("¡FALLO DE COMUNICACIÓN!")
-            self.lbl_status.setStyleSheet("color: red; font-weight: bold;")
-        
-        else:
-            self.lbl_status.setText("CONECTADO")
-            self.lbl_status.setStyleSheet("color: #27AE60; font-weight: bold;")
-            
-        # Siempre procesar últimos datos disponibles (aunque sean antiguos)
-        try:
-            raw_flow = self.last_data.get('flujo_instantaneo', 0)
-            display_flow = self.convert_fn(raw_flow)
-            
-            self.lbl_instant.setText(f"{display_flow:.2f} {self.display_unit}")
-            self.lbl_accumulated.setText(f"{self.last_data.get('flujo_acumulado', 0):.2f} m³")
-            
-            # Manejo de dirección de flujo (1 = positivo, 2 = negativo)
-            direccion = self.last_data.get('direccion_flujo', 0)
-            if direccion == 1:
-                self.lbl_status.setText("CONECTADO (→)")
-            elif direccion == 2:
-                self.lbl_status.setText("CONECTADO (←)")
-        
-            flags = self.last_data.get('flags', {})
-            flags_text = []
-            
-            if flags.get('alerta_presion', False):
-                flags_text.append("⚠️ Alta presión")
-            if flags.get('alerta_temperatura', False):
-                flags_text.append("⚠️ Alta temperatura")
-            if flags.get('fallo_sensor', False):
-                flags_text.append("❌ Fallo sensor")
-                
-            if flags_text:
-                self.lbl_flags.setText(" | ".join(flags_text))
-                self.lbl_flags.setStyleSheet("color: #E74C3C; font-weight: bold;")
-            else:
-                self.lbl_flags.setText("✅ Operación normal")
-                self.lbl_flags.setStyleSheet("color: #27AE60;")
-                
-            if elapsed > 2.0:
-                self.lbl_status.setText("Comunicación lenta")
-                self.lbl_status.setStyleSheet("color: orange;")
-            else:
-                self.lbl_status.setText("CONECTADO")
-                self.lbl_status.setStyleSheet("color: #27AE60; font-weight: bold;")
-        except Exception as e:
-            if self.error_handler:
-                self.error_handler.log_error("DASH_UPDATE", f"Error actualizando UI: {e}")
-            else:
-                logging.error(f"Error actualizando UI: {e}")
-        
-        try:
-            # Manejo de opcionales con N/A
-            energizacion = self.last_data.get('contador_energizacion', None)
-            self.lbl_energizacion.setText(str(energizacion) if energizacion is not None else "N/A")
-    
-            if energizacion is not None and energizacion > 1000:
-                self.lbl_energizacion.setStyleSheet("color: orange; font-weight: bold;")
-            else:
-                self.lbl_energizacion.setStyleSheet("")
-    
-            errores = self.last_data.get('errores_sensor', {})
-            errores_text = []
-            if errores.get('sensor_fault', False):
-                errores_text.append("Sensor")
-            if errores.get('over_range', False):
-                errores_text.append("Rango")
-            if errores.get('empty_pipe', False):
-                errores_text.append("Tubería")
-    
-            self.lbl_errores.setText(", ".join(errores_text) if errores_text else "Ninguno" if errores else "N/A")
-    
-            if errores_text:
-                self.lbl_errores.setStyleSheet("color: red; font-weight: bold;")
-            else:
-                self.lbl_errores.setStyleSheet("")
-    
-            cod_error = self.last_data.get('codigo_error', None)
-            self.lbl_cod_error.setText(f"{cod_error:04X}" if cod_error is not None else "N/A")
-    
-            if cod_error is not None and cod_error != 0:
-                self.lbl_cod_error.setStyleSheet("color: red; font-weight: bold;")
-            else:
-                self.lbl_cod_error.setStyleSheet("color: #7D3C98;")
-        
-        except Exception as e:
-            if self.error_handler:
-                self.error_handler.log_error("DASH_EXTRA_UI", f"Error actualizando UI extra: {e}")
-            else:
-                logging.error(f"Error actualizando UI extra: {e}")
-        
+            self.error_handler.log_error("DASH_REFRESH", f"Error refrescando unidades: {str(e)}")
+
     def closeEvent(self, event):
-        if hasattr(self, 'data_thread'):
-            self.data_thread.stop()
-            self.data_thread.wait(2000)
-        super().closeEvent(event)
+        """Detiene los temporizadores al cerrar la ventana"""
+        self.data_timer.stop()
+        self.unit_timer.stop()
+        self.connection_timer.stop()
+        event.accept()
