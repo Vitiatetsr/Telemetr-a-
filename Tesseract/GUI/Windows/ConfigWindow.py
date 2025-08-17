@@ -129,6 +129,14 @@ class ConfigWindow(QWidget):
         self.reg_accumulated.setValidator(QIntValidator(0, 65535))
         reg_layout.addRow("Flujo Acumulado:", self.reg_accumulated)
         
+        # ▼▼▼ AÑADIR ESTE NUEVO BLOQUE ▼▼▼
+        self.chk_unidad_flujo = QCheckBox("Habilitar Unidad de Flujo")
+        self.chk_unidad_flujo.setCheckable(True)  # Activado por defecto
+        self.reg_unidad_flujo = QLineEdit("131")
+        self.reg_unidad_flujo.setEnabled(False)  # Dirección fija no editable
+        self.reg_unidad_flujo.setStyleSheet("background-color: #F0F0F0;")
+        reg_layout.addRow(self.chk_unidad_flujo, self.reg_unidad_flujo)
+        
         self.chk_dir = QCheckBox("Habilitar Dirección de Flujo")
         self.chk_dir.setChecked(True)
         self.reg_dir = QLineEdit("301")
@@ -286,6 +294,8 @@ class ConfigWindow(QWidget):
         # Registros
         registros = profile.get("registros", {})
         self.reg_instant.setText(str(registros.get("flujo_instantaneo", {}).get("address", 237)))
+        self.reg_unidad_flujo.setText(str(registros.get("unidad_flujo", {}).get("address", 131)))
+        self.chk_unidad_flujo.setChecked("unidad_flujo" in registros)
         self.reg_accumulated.setText(str(registros.get("flujo_acumulado", {}).get("address", 207)))
         self.reg_dir.setText(str(registros.get("direccion_flujo", {}).get("address", 301)))
         self.reg_energizacion.setText(str(registros.get("contador_energizacion", {}).get("address", 245)))
@@ -512,6 +522,15 @@ class ConfigWindow(QWidget):
         }
         
         # Agregar opcionales solo si habilitados
+        if self.chk_unidad_flujo.isChecked():
+            profile["registros"]["unidad_flujo"] = {
+                "address": 131,  # Dirección fija para Badger M2000
+                "count": 1,
+                "data_type": "int16",
+                "no_escalar": True,
+                "funcion": 4
+            }
+        
         if self.chk_dir.isChecked():
             profile["registros"]["direccion_flujo"] = {
                 "address": int(self.reg_dir.text()),
