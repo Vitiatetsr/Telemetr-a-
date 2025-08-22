@@ -293,10 +293,10 @@ class ConfigWindow(QWidget):
         
         # Registros
         registros = profile.get("registros", {})
-        self.reg_instant.setText(str(registros.get("flujo_instantaneo", {}).get("address", 237)))
+        self.reg_instant.setText(str(registros.get("flujo_instantaneo", {}).get("address", 241)))
         self.reg_unidad_flujo.setText(str(registros.get("unidad_flujo", {}).get("address", 131)))
         self.chk_unidad_flujo.setChecked("unidad_flujo" in registros)
-        self.reg_accumulated.setText(str(registros.get("flujo_acumulado", {}).get("address", 207)))
+        self.reg_accumulated.setText(str(registros.get("flujo_acumulado", {}).get("address", 211)))
         self.reg_dir.setText(str(registros.get("direccion_flujo", {}).get("address", 301)))
         self.reg_energizacion.setText(str(registros.get("contador_energizacion", {}).get("address", 245)))
         self.reg_errores_sensor.setText(str(registros.get("errores_sensor", {}).get("address", 246)))

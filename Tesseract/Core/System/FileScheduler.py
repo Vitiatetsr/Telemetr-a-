@@ -26,18 +26,21 @@ class FileScheduler:
         transfer_service: IFileTransfer,
         config: Dict[str, Any],
         get_plantilla_fn: Callable[[str], Dict[str, Any]],
-        error_handler: ErrorHandler
+        error_handler: ErrorHandler,
+        alert_manager: Any = None  # AlertManager opcional para SMS
     ):
         self.transfer_service = transfer_service
         self.config = config
         self.get_plantilla = get_plantilla_fn
         self.error_handler = error_handler
+        self.alert_manager = alert_manager
         self.logger = logging.getLogger(__name__)
         
         self._scheduler = None
         self._lock = threading.Lock()
         
         self.email_config = self._cargar_config_email()
+        self.sms_config = self._cargar_config_sms()
         
         self._email_queue = queue.Queue(maxsize=self.MAX_QUEUE_SIZE)
         self._email_workers = []
@@ -53,6 +56,17 @@ class FileScheduler:
             return None
         except Exception as e:
             self.error_handler.log_error("EMAIL_CONF", f"Error cargando configuración email: {e}")
+            return None
+
+    def _cargar_config_sms(self) -> Dict[str, Any]:
+        try:
+            config_path = 'Config/sms_config.json'
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    return json.load(f)
+            return None
+        except Exception as e:
+            self.error_handler.log_error("SMS_CONF", f"Error cargando configuración SMS: {e}")
             return None
 
     def _init_email_workers(self):
@@ -142,13 +156,44 @@ class FileScheduler:
             )
             self.logger.info(f"Email enviado: {filename}")
             
-            
-            
         except smtplib.SMTPServerDisconnected:
             self.logger.warning("Reconectando SMTP...")
             raise
         except Exception as e:
             self.error_handler.log_error("EMAIL_SEND", f"Error enviando email: {e}")
+
+    def _enviar_email_inmediato(self, ruta_local: str) -> bool:
+        """Intenta enviar el email inmediatamente para el archivo dado."""
+        if not self.email_config:
+            return False
+            
+        try:
+            server = self._crear_smtp_server()
+            if server is None:
+                return False
+            self._enviar_email(server, ruta_local)
+            server.quit()
+            return True
+        except Exception as e:
+            self.error_handler.log_error("EMAIL_IMMEDIATE", f"Error enviando email inmediatamente: {e}")
+            return False
+
+    def _enviar_sms_inmediato(self, ruta_local: str) -> bool:
+        """Intenta enviar el contenido del archivo por SMS inmediatamente."""
+        if not self.sms_config or not self.alert_manager:
+            return False
+            
+        try:
+            # Obtener número destino de la configuración SMS
+            destino = self.sms_config.get("numero_destino", "")
+            if not destino:
+                self.error_handler.log_error("SMS_DEST", "Número destino no configurado para SMS")
+                return False
+                
+            return self.alert_manager.enviar_archivo_como_sms(ruta_local, destino)
+        except Exception as e:
+            self.error_handler.log_error("SMS_IMMEDIATE", f"Error enviando SMS inmediatamente: {e}")
+            return False
 
     def _eliminar_archivo_seguro(self, ruta_local):
         try:
@@ -207,7 +252,6 @@ class FileScheduler:
         archivo = os.path.basename(ruta_local)
         try:
             plantilla = self.get_plantilla(archivo)
-            # ¡CORRECCIÓN! Ruta remota segura (sin slash final)
             ruta_base = self.config.get("ruta_remota", "/default_conagua").rstrip('/')
             nombre_remoto = plantilla.get("nombre_remoto", archivo)
             ruta_remota = os.path.join(ruta_base, nombre_remoto)
@@ -222,13 +266,28 @@ class FileScheduler:
                 else:
                     self.logger.warning(f"Fallo FTP: {archivo}")
 
-            # ¡IMPORTANTE! Eliminación condicional segura
             if ftp_exitoso:
+                # Enviar SMS inmediatamente después de FTP exitoso
+                sms_exitoso = self._enviar_sms_inmediato(ruta_local)
+                if sms_exitoso:
+                    self.logger.info(f"SMS enviado: {archivo}")
+                else:
+                    self.logger.warning(f"Fallo SMS: {archivo}")
+
+                # Luego procesar email
                 if self.email_config:
-                    try:
-                        self._email_queue.put(ruta_local, block=False)
-                    except queue.Full:
-                        self.error_handler.log_error("EMAIL_QUEUE", f"Cola llena, omitiendo {archivo}")
+                    # Intentar enviar email inmediatamente
+                    if self._enviar_email_inmediato(ruta_local):
+                        self._eliminar_archivo_seguro(ruta_local)
+                        self.logger.info(f"Email enviado y archivo eliminado: {archivo}")
+                    else:
+                        # Renombrar el archivo para indicar que FTP fue exitoso pero email falló
+                        nueva_ruta = ruta_local + ".email_pending"
+                        try:
+                            os.rename(ruta_local, nueva_ruta)
+                            self.logger.warning(f"Email falló, archivo renombrado a: {nueva_ruta}")
+                        except Exception as e:
+                            self.error_handler.log_error("RENAME_FAIL", f"No se pudo renombrar el archivo: {e}")
                 else:
                     # Eliminar solo si no hay email configurado
                     self._eliminar_archivo_seguro(ruta_local)
@@ -241,7 +300,7 @@ class FileScheduler:
     def _enviar_archivos_pendientes(self):
         with self._lock:
             directorio = self.config.get("directorio_pendientes", "pendientes_usb")
-            archivos = [f for f in os.listdir(directorio) if f.endswith(".txt")]
+            archivos = [f for f in os.listdir(directorio) if f.endswith(".txt")]  # Solo .txt
             
             with ThreadPoolExecutor(max_workers=3) as executor:
                 futures = {}
@@ -262,6 +321,19 @@ class FileScheduler:
             directorio = self.config.get("directorio_pendientes", "pendientes_usb")
             max_dias = max(self.config.get("retencion_dias", 7), 180)
             
+            # Procesar archivos .email_pending para reintentar email
+            for archivo in os.listdir(directorio):
+                if archivo.endswith(".email_pending"):
+                    ruta = os.path.join(directorio, archivo)
+                    if os.path.isfile(ruta):
+                        # Intentar enviar email
+                        if self._enviar_email_inmediato(ruta):
+                            self._eliminar_archivo_seguro(ruta)
+                            self.logger.info(f"Email enviado en reintento para: {archivo}")
+                        else:
+                            self.logger.warning(f"Reintento de email falló para: {archivo}")
+            
+            # Eliminar archivos antiguos (tanto .txt como .email_pending)
             for archivo in os.listdir(directorio):
                 ruta = os.path.join(directorio, archivo)
                 if os.path.isfile(ruta):

@@ -10,6 +10,7 @@ from Core.System.ErrorHandler import ErrorHandler
 from GUI.Windows.FTPEmailConfigWindow import FTPEmailConfigWindow
 from GUI.Windows.SettingsWindow import SettingsWindow
 from Core.System.StateManager import StateManager
+from GUI.Windows.SMSConfigWindow import SMSConfigWindow
 
 class MainWindow(QMainWindow):
     def __init__(self, user, error_handler, sensor_profiles, file_scheduler):
@@ -59,6 +60,11 @@ class MainWindow(QMainWindow):
         ftp_action.triggered.connect(self.show_ftp_email_config)
         self.settings_menu.addAction(ftp_action)
         
+        # ✅ NUEVA OPCIÓN DE MENÚ PARA SMS
+        sms_action = QAction("Configuración SMS", self)
+        sms_action.triggered.connect(self.show_sms_config)
+        self.settings_menu.addAction(sms_action)
+        
         self.setStatusBar(QStatusBar())
         
     def show_warning(self, message):
@@ -73,6 +79,11 @@ class MainWindow(QMainWindow):
         # Actualizar conversión de unidades en el dashboard
         if hasattr(self, 'dashboard_window'):
             self.dashboard_window.refresh_unit_config()
+    
+    def show_sms_config(self):
+        """Muestra la ventana de configuración SMS"""
+        self.sms_window = SMSConfigWindow(self.error_handler)
+        self.sms_window.show()
 
     def show_ftp_email_config(self):
         from Core.System.ErrorHandler import ErrorHandler
@@ -127,4 +138,3 @@ class MainWindow(QMainWindow):
         
         # Mostrar estado
         self.show_warning("✅ Sistema operativo iniciado")
-            

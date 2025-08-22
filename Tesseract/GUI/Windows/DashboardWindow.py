@@ -1,9 +1,9 @@
 # Tesseract/GUI/Windows/DashboardWindow.py
 
 import logging
-from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtGui import QColor, QPalette, QFont
 from Core.DataProcessing.Services import UnitConverter
 from Core.System.ConfigManager import ConfigManager
 from Core.System.ErrorHandler import ErrorHandler
@@ -98,6 +98,31 @@ class DashboardWindow(QWidget):
         # Panel de información del sistema
         info_layout = QHBoxLayout()
         info_layout.setSpacing(10)
+        
+        # Sección Estadísticas del Sensor
+        sensor_stats_group = QGroupBox("Estadísticas del Sensor")
+        sensor_stats_layout = QGridLayout()
+        
+        # Contador de encendidos
+        sensor_stats_layout.addWidget(QLabel("Encendidos:"), 0, 0)
+        self.lbl_energizacion = QLabel("N/A")
+        self.lbl_energizacion.setFont(QFont("Arial", 10))
+        sensor_stats_layout.addWidget(self.lbl_energizacion, 0, 1)
+        
+        # Errores activos
+        sensor_stats_layout.addWidget(QLabel("Errores:"), 1, 0)
+        self.lbl_errores = QLabel("N/A")
+        self.lbl_errores.setFont(QFont("Arial", 10))
+        sensor_stats_layout.addWidget(self.lbl_errores, 1, 1)
+        
+        # Código de error
+        sensor_stats_layout.addWidget(QLabel("Código Error:"), 2, 0)
+        self.lbl_cod_error = QLabel("N/A")
+        self.lbl_cod_error.setFont(QFont("Consolas", 10))
+        sensor_stats_layout.addWidget(self.lbl_cod_error, 2, 1)
+        
+        sensor_stats_group.setLayout(sensor_stats_layout)
+        main_layout.addWidget(sensor_stats_group)  # Añadir al layout principal
         
         # Unidades
         unit_box = QWidget()
@@ -229,6 +254,29 @@ class DashboardWindow(QWidget):
             # Procesar dirección de flujo
             direccion_key = self.medidor.perfil.get("output_mapping", {}).get("flags", "direccion_flujo")
             direccion_valor = datos.get(direccion_key, 0)
+            
+            # Contador de energización 
+            energizacion = datos.get('contador_energizacion', None)
+            self.lbl_energizacion.setText(str(energizacion) if energizacion is not None else "N/A")
+            
+            # Manejo de errores del sensor
+            errores = datos.get('errores_sensor', {})
+            errores_text = []
+            if isinstance(errores, dict):
+                if errores.get('sensor_fault', False):
+                    errores_text.append("Sensor")
+                if errores.get('over_range', False):
+                    errores_text.append("Rango")
+                if errores.get('empty_pipe', False):
+                    errores_text.append("Tubería")
+            self.lbl_errores.setText(", ".join(errores_text) if errores_text else "Ninguno")
+            
+            # Código de error
+            cod_error = datos.get('codigo_error', None)
+            self.lbl_cod_error.setText(f"{cod_error:04X}" if cod_error is not None else "N/A")
+            
+        except Exception as e:
+            self.error_handler.log_error("DASH_STATS", f"Error actualizando estadísticas: {str(e)}")
             
             # Actualizar UI
             self.flow_value.setText(f"{flujo_convertido:.3f}")

@@ -11,8 +11,7 @@ from PyQt5.QtCore import QTimer
 from Core.System.ConfigManager import ConfigManager
 from Core.System.StateManager import StateManager
 from Core.System.ErrorHandler import ErrorHandler
-from Core.DataProcessing.Services import RecordFormatter, ConfigProvider, BitmaskConverter, FileNameGenerator # ✅ Añadido FileNameGenerator
-
+from Core.DataProcessing.Services import RecordFormatter, ConfigProvider, BitmaskConverter, FileNameGenerator
 
 class ReportsWindow(QWidget):
     def __init__(self, medidor, error_handler: ErrorHandler):
@@ -122,7 +121,6 @@ class ReportsWindow(QWidget):
         except Exception as e:
             self.error_handler.log_error("REP-GEN", f"Error generando reporte: {str(e)}")
     
-    # MÉTODO FALTANTE - IMPERATIVO PARA EVITAR ERRORES
     def verificar_tareas_programadas(self):
-        """Método requerido por el QTimer - Mantenido por compatibilidad"""
-        pass
+        """Ejecuta las tareas programadas pendientes."""
+        schedule.run_pending()

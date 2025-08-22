@@ -11,6 +11,7 @@ from GUI.Windows.LoginWindow import LoginWindow
 from Core.System.ConfigManager import ConfigManager
 from Core.System.ErrorHandler import ErrorHandler
 from Core.System.StateManager import StateManager
+from Core.Network.AlertManager import AlertManager  # ✅ Nuevo import
 
 class TesseractApp(QApplication):
     def __init__(self, argv):
@@ -51,6 +52,10 @@ class TesseractApp(QApplication):
         ftp_config = ConfigManager.cargar_config_ftp()
         ftp_manager = FTPManager(ftp_config, self.error_handler)
         
+        # ✅ Cargar configuración SMS 
+        sms_config = ConfigManager.cargar_config_sms()  # Asegúrate de tener este método en ConfigManager
+        alert_manager = AlertManager(sms_config, self.error_handler) if sms_config else None
+        
         sched_config = {
             "hora_envio": "23:59",
             "directorio_pendientes": "pendientes_usb",
@@ -65,10 +70,11 @@ class TesseractApp(QApplication):
             transfer_service=ftp_manager,
             config=sched_config,
             get_plantilla_fn=get_plantilla,
-            error_handler=self.error_handler
+            error_handler=self.error_handler,
+            alert_manager=alert_manager  # ✅ Pasar AlertManager al FileScheduler
         )
         
-        logging.info("FileScheduler configurado")
+        logging.info("FileScheduler configurado con AlertManager")
 
     def on_login_success(self, user):
         from GUI.Windows.MainWindow import MainWindow
@@ -80,10 +86,8 @@ class TesseractApp(QApplication):
             file_scheduler=self.file_scheduler
         )
         
-        # >>>>> CORRECCIÓN PRINCIPAL: INICIAR SERVICIOS ANTES DE MOSTRAR VENTANA <<<<<
         self.start_system_services()
         
-        # Mensaje informativo en lugar de bloqueante
         if not StateManager.is_system_ready():
             QMessageBox.information(
                 self.main_window,
@@ -97,17 +101,12 @@ class TesseractApp(QApplication):
     
     def start_system_services(self):
         try:
-            # >>>>> CORRECCIÓN: INICIAR FILE_SCHEDULER SI ESTÁ HABILITADO <<<<<
             if self.file_scheduler.config.get("enabled", True):
-                # Verificar si ya está iniciado
                 if not (hasattr(self.file_scheduler, '_scheduler') 
                         and self.file_scheduler._scheduler 
                         and self.file_scheduler._scheduler.running):
                     self.file_scheduler.iniciar()
                     logging.info("FileScheduler iniciado")
-            
-            # >>>>> ELIMINADO: No iniciar dashboard aquí (ya se hace en MainWindow)
-            
         except Exception as e:
             self.error_handler.log_error("APP_START", f"Error iniciando servicios: {e}")
 
