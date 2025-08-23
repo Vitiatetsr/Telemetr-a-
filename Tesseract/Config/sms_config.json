@@ -1,7 +1,7 @@
 {
     "use_sms": true,
-    "account_sid": "tu_sid_de_twilio",
-    "auth_token": "tu_token_de_twilio",
-    "numero_twilio": "+1234567890",
-    "numero_destino": "+521234567890"
+    "account_sid": "AC7b884d2aedf0949ab69defb5c0d64426",
+    "auth_token": "a3b7faf72dd439dc8ae25cd8ac730b04",
+    "numero_twilio": "+13343199539",
+    "numero_destino": ""
 }
