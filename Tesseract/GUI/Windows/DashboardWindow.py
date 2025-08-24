@@ -35,7 +35,7 @@ class DashboardWindow(QWidget):
         """Configura todos los elementos de la interfaz de usuario"""
         main_layout = QVBoxLayout()
         main_layout.setSpacing(10)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setContentsMargins(50, 50, 50, 50)
         
         # Panel de título
         title_layout = QHBoxLayout()
@@ -56,44 +56,70 @@ class DashboardWindow(QWidget):
         separator.setStyleSheet("background-color: #CCCCCC; height: 2px;")
         main_layout.addWidget(separator)
         
-        # Panel de datos principales
+        # Panel de datos principales - CORRECCIÓN COMPLETA DEL LAYOUT
+        data_group = QGroupBox("Datos de Medición")
         data_layout = QGridLayout()
         data_layout.setSpacing(15)
         
-        # Flujo instantáneo
-        flow_label = QLabel("FLUJO INSTANTÁNEO:")
+        # FLUJO INSTANTÁNEO (columna 0)
+        flow_label = QLabel("FLUJO INSTANTÁNEO:")  # Texto corregido
         flow_label.setStyleSheet("font-weight: bold;")
-        self.flow_value = QLabel("--")
-        self.flow_value.setStyleSheet("font-size: 24pt; color: #0066CC;")
-        self.flow_unit = QLabel("m³/h")
-        self.flow_unit.setStyleSheet("font-size: 14pt;")
-        
         data_layout.addWidget(flow_label, 0, 0)
-        data_layout.addWidget(self.flow_value, 1, 0)
-        data_layout.addWidget(self.flow_unit, 1, 1)
         
-        # Volumen acumulado
+        flow_container = QWidget()
+        flow_h_layout = QHBoxLayout(flow_container)
+        flow_h_layout.setContentsMargins(0, 0, 0, 0)
+        flow_h_layout.setSpacing(5)
+        
+        self.flow_value = QLabel("--")
+        self.flow_value.setStyleSheet("font-size: 50pt; color: #0066CC;")
+        self.flow_value.setMinimumWidth(120)  # Ancho mínimo para valores
+        self.flow_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        
+        self.flow_unit = QLabel("m³/h")
+        self.flow_unit.setStyleSheet("font-size: 40pt; color: #0066CC;")
+        
+        flow_h_layout.addWidget(self.flow_value)
+        flow_h_layout.addWidget(self.flow_unit)
+        flow_h_layout.addStretch()
+        
+        data_layout.addWidget(flow_container, 1, 0)
+        
+        # VOLUMEN ACUMULADO (columna 1)
         volume_label = QLabel("VOLUMEN ACUMULADO:")
         volume_label.setStyleSheet("font-weight: bold;")
-        self.volume_value = QLabel("--")
-        self.volume_value.setStyleSheet("font-size: 20pt; color: #009900;")
-        self.volume_unit = QLabel("m³")
-        self.volume_unit.setStyleSheet("font-size: 14pt;")
-        
         data_layout.addWidget(volume_label, 0, 1)
-        data_layout.addWidget(self.volume_value, 1, 1)
-        data_layout.addWidget(self.volume_unit, 1, 2)
         
-        # Dirección de flujo
-        direction_label = QLabel("DIRECCIÓN DE FLUJO:")
+        volume_container = QWidget()
+        volume_h_layout = QHBoxLayout(volume_container)
+        volume_h_layout.setContentsMargins(0, 0, 0, 0)
+        volume_h_layout.setSpacing(5)
+        
+        self.volume_value = QLabel("--")
+        self.volume_value.setStyleSheet("font-size: 50pt; color: #009900;")
+        self.volume_value.setMinimumWidth(120)  # Ancho mínimo para valores
+        self.volume_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        
+        self.volume_unit = QLabel("m³")
+        self.volume_unit.setStyleSheet("font-size: 40pt; color: #009900;")
+        
+        volume_h_layout.addWidget(self.volume_value)
+        volume_h_layout.addWidget(self.volume_unit)
+        volume_h_layout.addStretch()
+        
+        data_layout.addWidget(volume_container, 1, 1)
+        
+        # DIRECCIÓN DE FLUJO (columna 0, span 2 columnas)
+        direction_label = QLabel("DIRECCIÓN DE FLUJO:")  # Texto corregido
         direction_label.setStyleSheet("font-weight: bold;")
+        data_layout.addWidget(direction_label, 2, 0, 1, 2)  # Span de 2 columnas
+        
         self.direction_value = QLabel("--")
-        self.direction_value.setStyleSheet("font-size: 18pt;")
+        self.direction_value.setStyleSheet("font-size: 50pt;")
+        data_layout.addWidget(self.direction_value, 3, 0, 1, 2)  # Span de 2 columnas
         
-        data_layout.addWidget(direction_label, 2, 0)
-        data_layout.addWidget(self.direction_value, 3, 0)
-        
-        main_layout.addLayout(data_layout)
+        data_group.setLayout(data_layout)
+        main_layout.addWidget(data_group)
         
         # Panel de información del sistema
         info_layout = QHBoxLayout()
@@ -106,59 +132,55 @@ class DashboardWindow(QWidget):
         # Contador de encendidos
         sensor_stats_layout.addWidget(QLabel("Encendidos:"), 0, 0)
         self.lbl_energizacion = QLabel("N/A")
-        self.lbl_energizacion.setFont(QFont("Arial", 10))
+        self.lbl_energizacion.setFont(QFont("Arial", 20))
         sensor_stats_layout.addWidget(self.lbl_energizacion, 0, 1)
         
         # Errores activos
         sensor_stats_layout.addWidget(QLabel("Errores:"), 1, 0)
         self.lbl_errores = QLabel("N/A")
-        self.lbl_errores.setFont(QFont("Arial", 10))
+        self.lbl_errores.setFont(QFont("Arial", 20))
         sensor_stats_layout.addWidget(self.lbl_errores, 1, 1)
         
         # Código de error
         sensor_stats_layout.addWidget(QLabel("Código Error:"), 2, 0)
         self.lbl_cod_error = QLabel("N/A")
-        self.lbl_cod_error.setFont(QFont("Consolas", 10))
+        self.lbl_cod_error.setFont(QFont("Consolas", 20))
         sensor_stats_layout.addWidget(self.lbl_cod_error, 2, 1)
         
         sensor_stats_group.setLayout(sensor_stats_layout)
-        main_layout.addWidget(sensor_stats_group)  # Añadir al layout principal
+        main_layout.addWidget(sensor_stats_group)
+        
+        # Panel inferior con unidades y conexión
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
         
         # Unidades
-        unit_box = QWidget()
-        unit_box.setStyleSheet("background-color: #F0F0F0; border-radius: 5px; padding: 10px;")
+        unit_box = QGroupBox("Configuración de Unidades")  # Texto corregido
+        unit_box.setStyleSheet("QGroupBox { font-weight: bold; }")
         unit_layout = QVBoxLayout(unit_box)
-        
-        unit_title = QLabel("CONFIGURACIÓN DE UNIDADES")
-        unit_title.setStyleSheet("font-weight: bold;")
-        unit_layout.addWidget(unit_title)
         
         self.medidor_unit_label = QLabel("Medidor: Cargando...")
         self.visual_unit_label = QLabel("Visualización: Cargando...")
         
         unit_layout.addWidget(self.medidor_unit_label)
         unit_layout.addWidget(self.visual_unit_label)
-        info_layout.addWidget(unit_box)
+        bottom_layout.addWidget(unit_box)
         
         # Estado de conexión
-        status_box = QWidget()
-        status_box.setStyleSheet("background-color: #F0F0F0; border-radius: 5px; padding: 10px;")
+        status_box = QGroupBox("Estado de Conexión")  # Texto corregido
+        status_box.setStyleSheet("QGroupBox { font-weight: bold; }")
         status_layout = QVBoxLayout(status_box)
-        
-        status_title = QLabel("ESTADO DE CONEXIÓN")
-        status_title.setStyleSheet("font-weight: bold;")
-        status_layout.addWidget(status_title)
         
         self.connection_status = QLabel("Desconectado")
         self.connection_status.setStyleSheet("color: #FF0000; font-weight: bold;")
         
-        self.last_update = QLabel("Última actualización: --:--:--")
+        self.last_update = QLabel("Última actualización: --:--:--")  # Texto corregido
         
         status_layout.addWidget(self.connection_status)
         status_layout.addWidget(self.last_update)
-        info_layout.addWidget(status_box)
+        bottom_layout.addWidget(status_box)
         
-        main_layout.addLayout(info_layout)
+        main_layout.addLayout(bottom_layout)
         
         self.setLayout(main_layout)
 
@@ -226,12 +248,11 @@ class DashboardWindow(QWidget):
                 self.system_status.setStyleSheet("color: #FF9900; font-weight: bold;")
                 return
                 
-            # Leer datos del medidor
+            # Leer datos del medidor - CLAVES DIRECTAS, NO USAR output_mapping
             datos = self.medidor.leer_registros()
             
             # Procesar flujo instantáneo
-            flujo_key = self.medidor.perfil.get("output_mapping", {}).get("flujo_instantaneo", "flujo_instantaneo")
-            flujo_valor = datos.get(flujo_key, 0.0)
+            flujo_valor = datos.get("flujo_instantaneo", 0.0)
             
             # Convertir a unidad de visualización
             flujo_convertido = self.unit_converter.convert(
@@ -241,75 +262,55 @@ class DashboardWindow(QWidget):
             )
             
             # Procesar volumen acumulado
-            volumen_key = self.medidor.perfil.get("output_mapping", {}).get("flujo_acumulado", "flujo_acumulado")
-            volumen_valor = datos.get(volumen_key, 0.0)
-            
-            # Convertir volumen (siempre de m³ a m³)
-            volumen_convertido = self.unit_converter.convert(
-                volumen_valor,
-                "m³",
-                self.unidad_volumen
-            )
+            volumen_valor = datos.get("flujo_acumulado", 0.0)
             
             # Procesar dirección de flujo
-            direccion_key = self.medidor.perfil.get("output_mapping", {}).get("flags", "direccion_flujo")
-            direccion_valor = datos.get(direccion_key, 0)
-            
-            # Contador de energización 
-            energizacion = datos.get('contador_energizacion', None)
-            self.lbl_energizacion.setText(str(energizacion) if energizacion is not None else "N/A")
-            
-            # Manejo de errores del sensor
-            errores = datos.get('errores_sensor', {})
-            errores_text = []
-            if isinstance(errores, dict):
-                if errores.get('sensor_fault', False):
-                    errores_text.append("Sensor")
-                if errores.get('over_range', False):
-                    errores_text.append("Rango")
-                if errores.get('empty_pipe', False):
-                    errores_text.append("Tubería")
-            self.lbl_errores.setText(", ".join(errores_text) if errores_text else "Ninguno")
-            
-            # Código de error
-            cod_error = datos.get('codigo_error', None)
-            self.lbl_cod_error.setText(f"{cod_error:04X}" if cod_error is not None else "N/A")
-            
-        except Exception as e:
-            self.error_handler.log_error("DASH_STATS", f"Error actualizando estadísticas: {str(e)}")
+            direccion_valor = datos.get("direccion_flujo", 0)
             
             # Actualizar UI
             self.flow_value.setText(f"{flujo_convertido:.3f}")
-            self.volume_value.setText(f"{volumen_convertido:.2f}")
+            self.volume_value.setText(f"{volumen_valor:.2f}")
             
             # Dirección de flujo
-            if isinstance(direccion_valor, dict):
-                # Si es un diccionario de bits
-                if direccion_valor.get("forward", False):
-                    self.direction_value.setText("➡️ POSITIVA")
-                    self.direction_value.setStyleSheet("color: #0066CC; font-size: 18pt;")
-                elif direccion_valor.get("reverse", False):
-                    self.direction_value.setText("⬅️ NEGATIVA")
-                    self.direction_value.setStyleSheet("color: #FF6600; font-size: 18pt;")
-                else:
-                    self.direction_value.setText("⏹️ DETENIDO")
-                    self.direction_value.setStyleSheet("color: #999999; font-size: 18pt;")
+            if direccion_valor == 1:
+                self.direction_value.setText("➡️ POSITIVA")
+                self.direction_value.setStyleSheet("color: #0066CC; font-size: 18pt;")
+            elif direccion_valor == 2:
+                self.direction_value.setText("⬅️ NEGATIVA")
+                self.direction_value.setStyleSheet("color: #FF6600; font-size: 18pt;")
             else:
-                # Si es un valor numérico
-                if direccion_valor == 1:
-                    self.direction_value.setText("➡️ POSITIVA")
-                    self.direction_value.setStyleSheet("color: #0066CC; font-size: 18pt;")
-                elif direccion_valor == 2:
-                    self.direction_value.setText("⬅️ NEGATIVA")
-                    self.direction_value.setStyleSheet("color: #FF6600; font-size: 18pt;")
-                else:
-                    self.direction_value.setText("⏹️ DETENIDO")
-                    self.direction_value.setStyleSheet("color: #999999; font-size: 18pt;")
+                self.direction_value.setText("⏹️ DETENIDO")
+                self.direction_value.setStyleSheet("color: #999999; font-size: 18pt;")
             
             # Actualizar estado del sistema
             self.system_status.setText("✅ Sistema operativo")
             self.system_status.setStyleSheet("color: #009900; font-weight: bold;")
             
+            # Actualizar estadísticas del sensor
+            try:
+                # Contador de encendidos
+                energizacion = datos.get('contador_energizacion', None)
+                self.lbl_energizacion.setText(str(energizacion) if energizacion is not None else "N/A")
+                
+                # Errores activos
+                errores = datos.get('errores_sensor', {})
+                errores_text = []
+                if isinstance(errores, dict):
+                    if errores.get('sensor_fault', False):
+                        errores_text.append("Sensor")
+                    if errores.get('over_range', False):
+                        errores_text.append("Rango")
+                    if errores.get('empty_pipe', False):
+                        errores_text.append("Tubería")
+                self.lbl_errores.setText(", ".join(errores_text) if errores_text else "Ninguno")
+                
+                # Código de error
+                cod_error = datos.get('codigo_error', None)
+                self.lbl_cod_error.setText(f"{cod_error:04X}" if cod_error is not None else "N/A")
+                
+            except Exception as e:
+                self.error_handler.log_error("DASH_STATS", f"Error actualizando estadísticas: {str(e)}")
+                
         except Exception as e:
             self.error_handler.log_error("DASH_DATA", f"Error actualizando datos: {str(e)}")
             self.system_status.setText("⚠️ Error en lectura")
