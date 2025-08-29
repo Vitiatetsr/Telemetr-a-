@@ -37,7 +37,7 @@ class SettingsWindow(QWidget):
         rfc_layout.addWidget(self.rfc_input)
         main_layout.addLayout(rfc_layout)
         
-        # NUEVO: Campos NSM y NSUE
+        # Campos NSM y NSUE
         nsm_layout = QHBoxLayout()
         nsm_label = QLabel("Número Serie Medidor (NSM):")
         self.nsm_input = QLineEdit()
@@ -116,8 +116,8 @@ class SettingsWindow(QWidget):
             self.rfc_input.setText(config.get("RFC", ""))
             self.lat_input.setText(str(config.get("Lat", "")))
             self.long_input.setText(str(config.get("Long", "")))
-            self.nsm_input.setText(config.get("NSM", ""))  # NUEVO
-            self.nsue_input.setText(config.get("NSUE", ""))  # NUEVO
+            self.nsm_input.setText(config.get("NSM", ""))
+            self.nsue_input.setText(config.get("NSUE", ""))
             
             unit = config.get("unidad_visualizacion", "L/s")
             index = self.unit_combo.findText(unit)
@@ -143,8 +143,8 @@ class SettingsWindow(QWidget):
             long = self.long_input.text().strip()
             unit = self.unit_combo.currentText()
             usb_path = self.usb_input.text().strip()
-            nsm = self.nsm_input.text().strip()  # NUEVO
-            nsue = self.nsue_input.text().strip()  # NUEVO
+            nsm = self.nsm_input.text().strip()
+            nsue = self.nsue_input.text().strip()
             hora_reporte = self.time_edit.time().toString("HH:mm")
             
             # Validar campos obligatorios
@@ -161,8 +161,8 @@ class SettingsWindow(QWidget):
             config["unidad_visualizacion"] = unit
             config["storage_path"] = usb_path
             config["hora_reporte"] = hora_reporte
-            config["NSM"] = nsm  # NUEVO
-            config["NSUE"] = nsue  # NUEVO
+            config["NSM"] = nsm
+            config["NSUE"] = nsue
             
             ConfigManager.guardar_config_general(config)
             self.config_updated.emit()

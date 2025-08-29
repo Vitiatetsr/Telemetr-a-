@@ -1,11 +1,11 @@
 {
     "RFC": "HUJL0108026H5",
-    "NSM": "MTR-001",
-    "NSUE": "UE-001",
+    "NSM": "MDR-000",
+    "NSUE": "TSR-000",
     "Lat": 19.0178376,
     "Long": -98.2591393,
     "unidad_visualizacion": "m³/h",
-    "storage_path": "D:\\",
-    "hora_reporte": "23:00",
-    "report_type": ""
+    "storage_path": "C:\\Users\\Public\\Documents\\REFERENCIAS\\referencias telemetria",
+    "hora_reporte": "11:37",
+    "report_type": "SistemaMedicion"
 }

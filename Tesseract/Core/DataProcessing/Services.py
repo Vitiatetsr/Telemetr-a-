@@ -27,37 +27,32 @@ class BitmaskConverter(IBitmaskConverter):
         return value
 
 class UnitConverter(IUnitConverter):
-    # Estrategias como propiedad de CLASE
     CONVERSION_STRATEGIES = {
-    # Temperatura
-    ('°C', '°F'): lambda v: (v * 9/5) + 32,
-    ('°F', '°C'): lambda v: (v - 32) * 5/9,
-    
-    # Volumen
-    ('ml', 'l'): lambda v: v * 0.001,
-    ('ml', 'm³'): lambda v: v * 0.000001,
-    ('l', 'm³'): lambda v: v * 0.001,
-    ('gal', 'l'): lambda v: v * 3.78541,
-    
-    # Flujo (NUEVAS CONVERSIONES)
-    ('m³/s', 'L/s'): lambda v: v * 1000,
-    ('m³/s', 'gal/min'): lambda v: v * 15850.3,
-    ('m³/s', 'm³/h'): lambda v: v * 3600,
-    ('m³/h', 'L/s'): lambda v: v * 0.2778,
-    ('gal/min', 'L/s'): lambda v: v * 0.0630902,
-    ('m³/h', 'gal/min'): lambda v: v * 4.40287
-}
-
+        # Conversiones directas entre unidades de flujo
+        ('m³/h', 'L/s'): lambda v: v * (1000 / 3600),
+        ('m³/h', 'GPM'): lambda v: v * 4.40287,
+        ('L/s', 'm³/h'): lambda v: v * (3600 / 1000),
+        ('L/s', 'GPM'): lambda v: v * 15.8503,
+        ('GPM', 'm³/h'): lambda v: v * 0.227125,
+        ('GPM', 'L/s'): lambda v: v * 0.0630902,
+        
+        # Conversiones para volumen
+        ('m³', 'L'): lambda v: v * 1000,
+        ('m³', 'gal'): lambda v: v * 264.172,
+        ('L', 'm³'): lambda v: v * 0.001,
+        ('gal', 'm³'): lambda v: v * 0.00378541
+    }
     
     def convert(self, value: float, from_unit: str, to_unit: str) -> float:
         if from_unit == to_unit:
             return value
             
-        strategy_key = (from_unit, to_unit)
-        if strategy_key in self.CONVERSION_STRATEGIES:
-            return self.CONVERSION_STRATEGIES[strategy_key](value)
+        # Intentar conversión directa
+        direct_key = (from_unit, to_unit)
+        if direct_key in self.CONVERSION_STRATEGIES:
+            return self.CONVERSION_STRATEGIES[direct_key](value)
             
-        # Búsqueda de estrategia inversa
+        # Intentar conversión inversa
         reverse_key = (to_unit, from_unit)
         if reverse_key in self.CONVERSION_STRATEGIES:
             reverse_fn = self.CONVERSION_STRATEGIES[reverse_key]
@@ -68,16 +63,38 @@ class UnitConverter(IUnitConverter):
 class FileNameGenerator(IFileNameGenerator):
     def __init__(self, config_provider: IConfigProvider):
         self.config_provider = config_provider
-
+    
+    # 1. Implementación del método abstracto REQUERIDO
     def generate(self, tipo_registro: str, fecha_en_nombre: bool = True) -> str:
+        """Método de compatibilidad (no usado en nuevo diseño)"""
+        if fecha_en_nombre:
+            return self.generate_daily_name(tipo_registro)
+        return self.generate_historic_name(tipo_registro)
+    
+    def generate_historic_name(self, tipo_registro: str) -> str:
+        """Nombre para archivo histórico acumulativo (SIN FECHA)"""
+        try:
+            config = self.config_provider.get_config()
+            if tipo_registro == "Medidor":
+                return f"{config['RFC']}_{config['NSM']}_{config['NSUE']}.txt"
+            elif tipo_registro == "SistemaMedicion":
+                return f"{config['RFC']}_{config['NSUE']}.txt"
+        except Exception as e:
+            logging.error(f"Error nombre histórico: {e}")
+            return "historico_mediciones.txt"
+
+    def generate_daily_name(self, tipo_registro: str) -> str:
+        """Nombre para archivo diario de envío (CON FECHA)"""
         try:
             config = self.config_provider.get_config()
             fecha = datetime.now().strftime("%Y%m%d")
-            base = f"{config['RFC']}_{config['NSM']}" if tipo_registro == "Medidor" else f"{config['RFC']}_QA"
-            return f"{base}_{fecha}.txt" if fecha_en_nombre else f"{base}.txt"
+            if tipo_registro == "Medidor":
+                return f"{config['RFC']}_{fecha}_{config['NSM']}_{config['NSUE']}.txt"
+            elif tipo_registro == "SistemaMedicion":
+                return f"{config['RFC']}_{fecha}_{config['NSUE']}.txt"
         except Exception as e:
-            logging.error(f"Error generando nombre: {e}")
-            return f"EMG_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            logging.error(f"Error nombre diario: {e}")
+            return f"reporte_{datetime.now().strftime('%Y%m%d')}.txt"
 
 class RecordFormatter(IRecordFormatter):
     def __init__(self, config_provider: IConfigProvider, bitmask_converter: IBitmaskConverter):
@@ -105,7 +122,7 @@ class RecordFormatter(IRecordFormatter):
                 try:
                     flags_value = int(flags_raw)
                 except (TypeError, ValueError):
-                    flags_value = 0
+                    flags_value = 0 
                 
             if tipo_registro == "Medidor":
                 return (

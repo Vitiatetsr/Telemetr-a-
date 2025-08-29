@@ -1,7 +1,7 @@
 {
     "use_sms": true,
-    "account_sid": "tu_sid_de_twilio",
-    "auth_token": "tu_token_de_twilio",
-    "numero_twilio": "+1234567890",
-    "numero_destino": "+521234567890"
+    "provider": "instasent_http",
+    "api_token": "issw_0qyafntfxfvrj6sfziwnjnpmlwjhvyafvwd",
+    "instasent_sender_id": "Teseractohgf",
+    "numero_destino": "+522228033078"
 }

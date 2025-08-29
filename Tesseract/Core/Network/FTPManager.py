@@ -17,7 +17,7 @@ class FTPManager(IFileTransfer):
         self.connection: Optional[ftplib.FTP_TLS] = None
         self.timeout = config.get("timeout", 30)
         self.port = config.get("puerto", 21)
-        self.secure_mode = config.get("secure", True) # Valor por defecto True
+        self.secure_mode = config.get("secure", True)  # Valor por defecto True
 
     def _conectar(self) -> bool:
         try:
@@ -42,14 +42,14 @@ class FTPManager(IFileTransfer):
                         user=self.config["usuario"],
                         passwd=self.config["clave"]
                     )
-                    # Intentan establecer protección de datos
+                    # Intentar establecer protección de datos
                     try:
                         self.connection.prot_p()
                     except:
                         self.logger.warning("El servidor no soporta PROT P, continuando sin cifrado de datos")
                     return True
                 except Exception as e:
-                    self.logger.warning(f"Fallo TLS, intentando sin cifrado: {str(e)}")
+                    self.logger.warning(f"Fallo TLS, intentando sin cifrado")  # ¡Credenciales seguras!
                     
             # Conexión FTP estándar
             self.connection = ftplib.FTP(timeout=self.timeout)
@@ -70,7 +70,6 @@ class FTPManager(IFileTransfer):
             self.error_handler.log_error("FTP-002", f"Error inesperado: {e}")
             return False
 
-
     def _cerrar_conexion(self):
         try:
             if self.connection:
@@ -81,29 +80,43 @@ class FTPManager(IFileTransfer):
             self.connection = None
 
     def _crear_directorios_remotos(self, remote_dir: str):
-        """Crea directorios remotos recursivamente"""
+        """Crea directorios remotos recursivamente - Versión mejorada"""
         try:
-            # CORRECCIÓN: Manejo de rutas absolutas
-            if remote_dir.startswith("/"):
-                self.connection.cwd("/")
+            # 1. Resetear a directorio raíz
+            self.connection.cwd("/")
             
-            directorios = [d for d in remote_dir.split('/') if d]
-            path_actual = ""
-        
-            for dir in directorios:
-                path_actual += f"/{dir}" if path_actual else dir
+            # 2. Crear estructura completa
+            segments = remote_dir.strip("/").split("/")
+            current_path = ""
+            
+            for segment in segments:
+                if not segment:
+                    continue
+                    
+                current_path += f"/{segment}" if current_path else segment
+                
                 try:
-                    self.connection.cwd(path_actual)
-                except:
+                    self.connection.cwd(current_path)
+                except ftplib.error_perm:
                     try:
-                        self.connection.mkd(path_actual)
-                        self.connection.cwd(path_actual)
+                        self.connection.mkd(current_path)
+                        self.connection.cwd(current_path)
                     except ftplib.error_perm as e:
-                        # Ignorar error "El directorio ya existe"
+                        # Ignorar error si directorio ya existe
                         if "550" not in str(e):
                             raise
         except Exception as e:
             self.error_handler.log_error("FTP-003", f"Error creando directorios: {e}")
+
+    def _validar_formato_conagua(self, local_path: str) -> bool:
+        """Valida que el archivo cumpla con normativa Conagua"""
+        try:
+            with open(local_path, 'r') as f:
+                first_line = f.readline().strip()
+                return first_line.startswith(("M|", "QA|"))
+        except Exception as e:
+            self.error_handler.log_error("FTP-FORMAT", f"Error validando formato: {e}")
+            return False
 
     def enviar_archivo(self, local_path: str, remote_path: str) -> bool:
         self.logger.info(f"Iniciando envío FTP: {local_path} -> {remote_path}")
@@ -113,6 +126,11 @@ class FTPManager(IFileTransfer):
                 if not self._conectar():
                     self.logger.error("No se pudo establecer conexión FTP")
                     continue
+                
+                # Validación CRÍTICA de formato Conagua
+                if not self._validar_formato_conagua(local_path):
+                    self.error_handler.log_error("FTP-010", f"Formato inválido: {os.path.basename(local_path)}")
+                    return False
                 
                 # Crear estructura de directorios
                 remote_dir = os.path.dirname(remote_path)

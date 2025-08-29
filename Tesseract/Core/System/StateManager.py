@@ -1,6 +1,7 @@
 # Tesseract/Core/System/StateManager.py
 
 import threading
+from typing import Any
 
 class StateManager:
     """Gestiona el estado de preparación del sistema mediante checkpoints"""
@@ -10,6 +11,7 @@ class StateManager:
         "meter_config": False,
         "report_templates": False
     }
+    _system_state = {}  # Almacena objetos del sistema
     _lock = threading.RLock()
 
     @classmethod
@@ -26,7 +28,6 @@ class StateManager:
     
     @classmethod
     def is_ready(cls, state_name: str) -> bool:
-        """Verifica si un checkpoint específico está listo"""
         with cls._lock:
             return cls._states.get(state_name, False)
     
@@ -36,3 +37,13 @@ class StateManager:
             for key in cls._states:
                 cls._states[key] = False
             print("🔄 Todos los checkpoints reiniciados")
+            
+    @classmethod
+    def set_state(cls, key: str, value: Any):
+        with cls._lock:
+            cls._system_state[key] = value
+            
+    @classmethod
+    def get_state(cls, key: str) -> Any:
+        with cls._lock:
+            return cls._system_state.get(key)

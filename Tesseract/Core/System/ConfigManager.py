@@ -16,6 +16,12 @@ class ConfigManager:
     
     _cache = {}
 
+    @staticmethod
+    def _validar_unidad(unidad: str):
+        unidades_validas = ["L/s", "m³/h", "GPM"]
+        if unidad not in unidades_validas:
+            raise ValueError(f"Unidad no válida: {unidad}. Use: {', '.join(unidades_validas)}")
+    
     @classmethod
     def cargar_config_general(cls) -> Dict[str, Any]:
         if 'general' in cls._cache:
@@ -27,7 +33,7 @@ class ConfigManager:
                 raise ValueError(f"Falta '{key}' en {cls.GENERAL_CONFIG}")
             
         # Unidad por defecto garantizada
-        cfg.setdefault("unidad_visualizacion", "L/s")
+        cfg.setdefault("unidad_visualizacion", "m³/h")
         
         # NUEVO: Valor por defecto para Windows 10
         cfg.setdefault("storage_path", "D:\\TesseractData") 
@@ -87,21 +93,22 @@ class ConfigManager:
             return cls._cache['sms']
             
         cfg = cls._cargar_archivo(cls.SMS_CONFIG)
+        # Actualizado para TextBelt
         if "numero_destino" not in cfg:
             raise ValueError(f"Falta 'numero_destino' en {cls.SMS_CONFIG}")
-        cfg.setdefault("account_sid", "")
-        cfg.setdefault("auth_token", "")
-        cfg.setdefault("numero_twilio", "")
+        cfg.setdefault("api_key", "")  # Cambiado de account_sid a api_key
         cls._cache['sms'] = cfg
         return cfg
 
     @classmethod
     def guardar_config_sms(cls, config: Dict[str, Any]) -> None:
-        for key in ["numero_destino"]:
+        # Actualizado para TextBelt
+        for key in ["numero_destino", "api_key"]:  # Cambiado de account_sid a api_key
             if key not in config:
                 raise ValueError(f"Falta '{key}' en la configuración SMS")
         cls._guardar_archivo(cls.SMS_CONFIG, config)
         cls._cache.pop('sms', None)
+
 
     @classmethod
     def cargar_config_login(cls) -> Dict[str, Any]:
