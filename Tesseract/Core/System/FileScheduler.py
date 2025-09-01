@@ -1,4 +1,3 @@
-# Tesseract/Core/System/FileScheduler.py
 
 # Tesseract/Core/System/FileScheduler.py
 
