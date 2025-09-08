@@ -1,0 +1,13 @@
+{
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "from": "teseractohgf@gmail.com",
+    "to": [
+        "teseractohgf@gmail.com",
+        "ahuertajesus@gmail.com",
+        "leohuer456@gmail.com"
+    ],
+    "subject": "Archivo TXT generado por Tesseract",
+    "username": "teseractohgf@gmail.com",
+    "password": "wsis imsg gsve tyzi"
+}
