@@ -1,5 +1,4 @@
-
-# Tesseract/GUI/Windows/ConfigWindow.py
+# TESERACTO-UTR/GUI/Windows/ConfigWindow.py
 
 import os
 import json
@@ -7,7 +6,7 @@ import re
 import string
 import logging
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QComboBox, 
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QComboBox,
     QLineEdit, QPushButton, QFormLayout, QMessageBox, QScrollArea, QCheckBox
 )
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
@@ -19,57 +18,46 @@ from Core.System import ErrorHandler
 class ConfigWindow(QWidget):
     def __init__(self, medidor, error_handler):
         super().__init__()
-        # Medidor puede ser None inicialmente
         self.medidor = medidor
         self.error_handler = error_handler
         self.current_profile = {}
         self.setup_ui()
         
-        # Cargar configuración solo si medidor está disponible
         if self.medidor is not None:
             self.load_initial_config()
         
     def setup_ui(self):
-        # Configuración principal
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(15, 15, 15, 15)
         
-        # Área desplazable para muchos parámetros
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content_widget = QWidget()
         content_layout = QVBoxLayout()
         
-        # -- Sección: Conexión Serial --
         serial_group = QGroupBox("Configuración Modbus RTU")
         serial_layout = QFormLayout()
         
-        # Puerto COM
         self.cmb_ports = QComboBox()
         self.cmb_ports.setMinimumWidth(150)
         serial_layout.addRow("Puerto COM:", self.cmb_ports)
         
-        # Baudrate
         self.cmb_baudrate = QComboBox()
         self.cmb_baudrate.addItems(["9600", "19200", "38400", "57600", "115200"])
         serial_layout.addRow("Baudrate:", self.cmb_baudrate)
         
-        # Paridad
         self.cmb_parity = QComboBox()
         self.cmb_parity.addItems(["Ninguna", "Par", "Impar"])
         serial_layout.addRow("Paridad:", self.cmb_parity)
         
-        # Bits de parada
         self.cmb_stopbits = QComboBox()
         self.cmb_stopbits.addItems(["1", "1.5", "2"])
         serial_layout.addRow("Bits de parada:", self.cmb_stopbits)
         
-        # ID Esclavo
         self.txt_slave_id = QLineEdit("1")
         self.txt_slave_id.setValidator(QIntValidator(1, 247))
         serial_layout.addRow("ID Esclavo:", self.txt_slave_id)
         
-        # Botón detección puertos
         self.btn_refresh_ports = QPushButton("Detectar Puertos")
         self.btn_refresh_ports.clicked.connect(self.refresh_com_ports)
         serial_layout.addRow(self.btn_refresh_ports)
@@ -77,23 +65,19 @@ class ConfigWindow(QWidget):
         serial_group.setLayout(serial_layout)
         content_layout.addWidget(serial_group)
         
-        # -- Sección: Perfil de Sensor --
         sensor_group = QGroupBox("Perfil de Medidor")
         sensor_layout = QVBoxLayout()
         
-        # Selector de perfiles
         self.cmb_profiles = QComboBox()
         self.cmb_profiles.currentIndexChanged.connect(self.load_profile)
         sensor_layout.addWidget(QLabel("Perfil Predefinido:"))
         sensor_layout.addWidget(self.cmb_profiles)
         
-        # Campos editables
         self.profile_form = QFormLayout()
         self.profile_form.addRow("Modelo:", QLineEdit())
         self.profile_form.addRow("Fabricante:", QLineEdit())
         sensor_layout.addLayout(self.profile_form)
         
-        # Campos para endianness y word order
         endian_layout = QHBoxLayout()
         self.cmb_endianness = QComboBox()
         self.cmb_endianness.addItems(["Big", "Little"])
@@ -104,10 +88,9 @@ class ConfigWindow(QWidget):
         self.cmb_word_order.addItems(["Big", "Little"])
         endian_layout.addWidget(QLabel("Word Order:"))
         endian_layout.addWidget(self.cmb_word_order)
-        sensor_layout.addLayout(endian_layout)  
+        sensor_layout.addLayout(endian_layout)
         
-        # Campos para escalas
-        self.txt_esc_instant = QLineEdit("1.0") 
+        self.txt_esc_instant = QLineEdit("1.0")
         self.txt_esc_instant.setValidator(QDoubleValidator(0.00001, 10000.1, 5))
         sensor_layout.addWidget(QLabel("Escala Flujo Inst:"))
         sensor_layout.addWidget(self.txt_esc_instant)
@@ -116,24 +99,28 @@ class ConfigWindow(QWidget):
         self.txt_esc_accum.setValidator(QDoubleValidator(0.00001, 10000.0, 5))
         sensor_layout.addWidget(QLabel("Escala Flujo Acum:"))
         sensor_layout.addWidget(self.txt_esc_accum)
-        
-        # Registros con checkboxes para opcionales
+
         reg_group = QGroupBox("Asignación de Registros")
         reg_layout = QFormLayout()
         
-        self.reg_instant = QLineEdit("241")  
+        self.reg_instant = QLineEdit("241")
         self.reg_instant.setValidator(QIntValidator(0, 65535))
         reg_layout.addRow("Flujo Instantáneo:", self.reg_instant)
         
-        self.reg_accumulated = QLineEdit("211")  
+        self.reg_accumulated = QLineEdit("211")
         self.reg_accumulated.setValidator(QIntValidator(0, 65535))
         reg_layout.addRow("Flujo Acumulado:", self.reg_accumulated)
+
+        self.chk_velocidad = QCheckBox("Habilitar Velocidad de Flujo")
+        self.chk_velocidad.setChecked(True)
+        self.reg_velocidad = QLineEdit("233")
+        self.reg_velocidad.setValidator(QIntValidator(0, 65535))
+        reg_layout.addRow(self.chk_velocidad, self.reg_velocidad)
         
-        # ▼▼▼ AÑADIR ESTE NUEVO BLOQUE ▼▼▼
         self.chk_unidad_flujo = QCheckBox("Habilitar Unidad de Flujo")
-        self.chk_unidad_flujo.setCheckable(True)  # Activado por defecto
+        self.chk_unidad_flujo.setCheckable(True)
         self.reg_unidad_flujo = QLineEdit("131")
-        self.reg_unidad_flujo.setEnabled(False)  # Dirección fija no editable
+        self.reg_unidad_flujo.setEnabled(False)
         self.reg_unidad_flujo.setStyleSheet("background-color: #F0F0F0;")
         reg_layout.addRow(self.chk_unidad_flujo, self.reg_unidad_flujo)
         
@@ -161,7 +148,6 @@ class ConfigWindow(QWidget):
         reg_group.setLayout(reg_layout)
         sensor_layout.addWidget(reg_group)
         
-        # Botones de acción
         btn_layout = QHBoxLayout()
         self.btn_save = QPushButton("Guardar Perfil")
         self.btn_save.clicked.connect(self.save_profile)
@@ -175,7 +161,6 @@ class ConfigWindow(QWidget):
         sensor_group.setLayout(sensor_layout)
         content_layout.addWidget(sensor_group)
         
-        # Sección: Config Guardada
         self.lbl_status = QLabel("Configuración no guardada")
         self.lbl_status.setFont(QFont("Arial", 10, QFont.Bold))
         self.lbl_status.setStyleSheet("color: #E74C3C;")
@@ -186,7 +171,6 @@ class ConfigWindow(QWidget):
         main_layout.addWidget(scroll)
         self.setLayout(main_layout)
         
-        # Timer para actualización periódica
         self.update_timer = QTimer()
         self.update_timer.setInterval(5000)
         self.update_timer.timeout.connect(self.refresh_com_ports)
@@ -202,14 +186,11 @@ class ConfigWindow(QWidget):
         
         def run(self):
             try:
-                # SOLUCIÓN: Usar el lock nativo de Python, no Qt
                 with self.medidor._connection_lock:
-                    # Desconectar y reiniciar conexión
                     self.medidor.desconectar()
                     self.medidor.perfil = self.profile
                     self.medidor._init_client()
                     
-                    # Conexión con timeout controlado
                     success = self.medidor.conectar()
                     message = "✅ Configuración aplicada" if success else "❌ Conexión fallida"
                     self.finished.emit(success, message)
@@ -217,7 +198,6 @@ class ConfigWindow(QWidget):
                 self.finished.emit(False, f"❌ Error crítico: {str(e)}")
 
     def load_initial_config(self):
-        """Carga inicial diferida para mejor rendimiento"""
         if self.medidor is None:
             return
             
@@ -228,7 +208,6 @@ class ConfigWindow(QWidget):
             self.show_profile(self.current_profile)
 
     def load_profiles(self):
-        """Carga perfiles disponibles sin bloquear UI"""
         self.cmb_profiles.clear()
         try:
             profiles = ConfigManager.obtener_perfiles_predefinidos()
@@ -242,7 +221,6 @@ class ConfigWindow(QWidget):
                 logging.error(f"Error cargando perfiles: {e}")
 
     def refresh_com_ports(self):
-        """Actualiza lista de puertos COM disponibles"""
         current = self.cmb_ports.currentText()
         self.cmb_ports.clear()
         try:
@@ -259,7 +237,6 @@ class ConfigWindow(QWidget):
                 logging.error(f"Error detectando puertos: {e}")
 
     def load_profile(self, index):
-        """Carga perfil seleccionado en formulario"""
         profile = self.cmb_profiles.itemData(index)
         if not profile:
             self.clear_form()
@@ -268,21 +245,17 @@ class ConfigWindow(QWidget):
         self.current_profile = profile
 
     def show_profile(self, profile):
-        """Muestra perfil en UI"""
-        # Conexión
         self.cmb_ports.setCurrentText(profile.get("puerto_serie", ""))
         self.cmb_baudrate.setCurrentText(str(profile.get("baudrate", 9600)))
         self.cmb_parity.setCurrentText(self.map_parity(profile.get("parity", "N")))
         self.cmb_stopbits.setCurrentText(str(profile.get("stopbits", 1)))
         self.txt_slave_id.setText(str(profile.get("slave_id", 1)))
         
-        # Parámetros críticos
         if "endianness" in profile:
             self.cmb_endianness.setCurrentText(profile["endianness"].capitalize())
         if "word_order" in profile:
             self.cmb_word_order.setCurrentText(profile["word_order"].capitalize())
             
-        # Información general
         for i in range(self.profile_form.rowCount()):
             widget = self.profile_form.itemAt(i, QFormLayout.FieldRole).widget()
             if isinstance(widget, QLineEdit):
@@ -291,9 +264,9 @@ class ConfigWindow(QWidget):
                 elif i == 1:
                     widget.setText(profile.get("fabricante", ""))
         
-        # Registros
         registros = profile.get("registros", {})
         self.reg_instant.setText(str(registros.get("flujo_instantaneo", {}).get("address", 241)))
+        self.reg_velocidad.setText(str(registros.get("velocidad_flujo", {}).get("address", 233)))
         self.reg_unidad_flujo.setText(str(registros.get("unidad_flujo", {}).get("address", 131)))
         self.chk_unidad_flujo.setChecked("unidad_flujo" in registros)
         self.reg_accumulated.setText(str(registros.get("flujo_acumulado", {}).get("address", 211)))
@@ -302,7 +275,6 @@ class ConfigWindow(QWidget):
         self.reg_errores_sensor.setText(str(registros.get("errores_sensor", {}).get("address", 246)))
         self.reg_codigo_error.setText(str(registros.get("codigo_error", {}).get("address", 257)))
         
-        # Escalas
         self.txt_esc_instant.setText(str(registros.get("flujo_instantaneo", {}).get("escala", 0.001)))
         self.txt_esc_accum.setText(str(registros.get("flujo_acumulado", {}).get("escala", 1.0)))
         
@@ -318,7 +290,6 @@ class ConfigWindow(QWidget):
         return mapping.get(text, "N")
 
     def clear_form(self):
-        """Limpia formulario para nuevo perfil"""
         self.cmb_ports.setCurrentIndex(0)
         self.cmb_baudrate.setCurrentIndex(0)
         self.cmb_parity.setCurrentIndex(0)
@@ -342,17 +313,15 @@ class ConfigWindow(QWidget):
         self.lbl_status.setStyleSheet("color: #3498DB;")
 
     def save_profile(self):
-        """Guarda perfil actual en configuración con validación mejorada"""
         try:
-            # Validar campos obligatorios
             modelo = self.profile_form.itemAt(0, QFormLayout.FieldRole).widget().text()
             if not modelo.strip():
                 raise ValueError("El modelo no puede estar vacío")
                 
-            # Validar campos numéricos
             campos_numericos = {
                 "Flujo Instantáneo": self.reg_instant,
                 "Flujo Acumulado": self.reg_accumulated,
+                "Velocidad de Flujo": self.reg_velocidad,
                 "Dirección de Flujo": self.reg_dir,
                 "Energización": self.reg_energizacion,
                 "Errores Sensor": self.reg_errores_sensor,
@@ -368,14 +337,12 @@ class ConfigWindow(QWidget):
                 except ValueError:
                     raise ValueError(f"Valor inválido en '{nombre}': debe ser un número entero")
             
-            # Validar escalas
             try:
                 float(self.txt_esc_instant.text())
                 float(self.txt_esc_accum.text())
             except ValueError:
                 raise ValueError("Las escalas deben ser valores numéricos")
             
-            # Recolectar datos y guardar
             profile = self.collect_form_data()
             ConfigManager.guardar_perfil_sensor(profile, es_nuevo=True)
             self.load_profiles()
@@ -388,7 +355,6 @@ class ConfigWindow(QWidget):
             self.lbl_status.setText(f"❌ Error: {str(e)}")
             self.lbl_status.setStyleSheet("color: #E74C3C;")
             
-            # Mostrar mensaje de error al usuario
             QMessageBox.critical(
                 self,
                 "Error al guardar",
@@ -397,17 +363,15 @@ class ConfigWindow(QWidget):
             )
 
     def apply_config(self):
-        """Aplica configuración con validación extendida"""
         try:
-            # Validar campos obligatorios
             if not self.cmb_ports.currentText():
                 raise ValueError("Seleccione un puerto COM")
                 
-            # Validar campos numéricos
             campos_numericos = {
                 "ID Esclavo": self.txt_slave_id,
                 "Flujo Instantáneo": self.reg_instant,
                 "Flujo Acumulado": self.reg_accumulated,
+                "Velocidad de Flujo": self.reg_velocidad,
                 "Dirección de Flujo": self.reg_dir,
                 "Energización": self.reg_energizacion,
                 "Errores Sensor": self.reg_errores_sensor,
@@ -424,22 +388,18 @@ class ConfigWindow(QWidget):
                 except ValueError:
                     raise ValueError(f"Valor inválido en '{nombre}': debe ser un número entero")
             
-            # Validar escalas
             try:
                 float(self.txt_esc_instant.text())
                 float(self.txt_esc_accum.text())
             except ValueError:
                 raise ValueError("Las escalas deben ser valores numéricos")
             
-            # Recolectar datos
             profile = self.collect_form_data()
             
-            # Deshabilitar UI durante operación
             self.setEnabled(False)
             self.lbl_status.setText("Aplicando configuración...")
             self.lbl_status.setStyleSheet("color: #3498DB;")
             
-            # Crear y configurar worker
             self.worker = self.ConnectionWorker(self.medidor, profile)
             self.worker.finished.connect(self.handle_connection_result)
             self.worker.start()
@@ -448,7 +408,6 @@ class ConfigWindow(QWidget):
             self.handle_connection_error(e)
 
     def handle_connection_result(self, success, message):
-        """Maneja resultado de la conexión en segundo plano"""
         self.setEnabled(True)
         self.lbl_status.setText(message)
         self.lbl_status.setStyleSheet("color: #27AE60;" if success else "color: #E74C3C;")
@@ -457,13 +416,11 @@ class ConfigWindow(QWidget):
             QTimer.singleShot(500, self.force_initial_read)
 
     def handle_connection_error(self, error):
-        """Maneja errores durante la conexión"""
         self.setEnabled(True)
         self.error_handler.log_error("CONFIG_APPLY", f"Error crítico: {error}")
         self.lbl_status.setText(f"❌ Error: {str(error)}")
         self.lbl_status.setStyleSheet("color: #E74C3C;")
         
-        # Mostrar mensaje de error detallado
         QMessageBox.critical(
             self,
             "Error de Conexión",
@@ -473,8 +430,6 @@ class ConfigWindow(QWidget):
         )
     
     def collect_form_data(self):
-        """Recopila datos del formulario con validación incorporada y opcionales"""
-        # Validar que todos los campos numéricos tengan valores
         campos = [
             self.reg_instant, self.reg_accumulated
         ]
@@ -482,7 +437,6 @@ class ConfigWindow(QWidget):
             if not campo.text().isdigit():
                 raise ValueError("Los campos obligatorios de registros deben contener números")
         
-        # Construir perfil
         profile = {
             "puerto_serie": self.cmb_ports.currentText(),
             "baudrate": int(self.cmb_baudrate.currentText()),
@@ -493,7 +447,7 @@ class ConfigWindow(QWidget):
             "slave_id": int(self.txt_slave_id.text()),
             "endianness": self.cmb_endianness.currentText().lower(),
             "word_order": self.cmb_word_order.currentText().lower(),
-            "funcion_default": 4,  # FORZAR FUNCIÓN DEFAULT A 4
+            "funcion_default": 4,
             "modelo": self.profile_form.itemAt(0, QFormLayout.FieldRole).widget().text(),
             "fabricante": self.profile_form.itemAt(1, QFormLayout.FieldRole).widget().text(),
             "registros": {
@@ -503,7 +457,7 @@ class ConfigWindow(QWidget):
                     "data_type": "float32",
                     "escala": float(self.txt_esc_instant.text()),
                     "unidad": "m³/s",
-                    "funcion": 4  # FORZAR A INPUT REGISTER
+                    "funcion": 4
                 },
                 "flujo_acumulado": {
                     "address": int(self.reg_accumulated.text()),
@@ -511,7 +465,7 @@ class ConfigWindow(QWidget):
                     "data_type": "float32",
                     "escala": float(self.txt_esc_accum.text()),
                     "unidad": "m³",
-                    "funcion": 4  # FORZAR A INPUT REGISTER
+                    "funcion": 4
                 }
             },
             "output_mapping": {
@@ -521,10 +475,18 @@ class ConfigWindow(QWidget):
             }
         }
         
-        # Agregar opcionales solo si habilitados
+        if self.chk_velocidad.isChecked():
+            profile["registros"]["velocidad_flujo"] = {
+                "address": int(self.reg_velocidad.text()),
+                "count": 2,
+                "data_type": "float32",
+                "funcion": 4
+            }
+            profile["output_mapping"]["velocidad_flujo"] = "velocidad_flujo"
+
         if self.chk_unidad_flujo.isChecked():
             profile["registros"]["unidad_flujo"] = {
-                "address": 131,  # Dirección fija para Badger M2000
+                "address": 131,
                 "count": 1,
                 "data_type": "int16",
                 "no_escalar": True,
@@ -536,7 +498,7 @@ class ConfigWindow(QWidget):
                 "address": int(self.reg_dir.text()),
                 "count": 1,
                 "data_type": "int16",
-                "funcion": 4  # FORZAR A INPUT REGISTER
+                "funcion": 4
             }
         
         if self.chk_energizacion.isChecked():
@@ -544,7 +506,7 @@ class ConfigWindow(QWidget):
                 "address": int(self.reg_energizacion.text()),
                 "count": 1,
                 "data_type": "int16",
-                "funcion": 4  # FORZAR A INPUT REGISTER
+                "funcion": 4
             }
         
         if self.chk_errores_sensor.isChecked():
@@ -552,7 +514,7 @@ class ConfigWindow(QWidget):
                 "address": int(self.reg_errores_sensor.text()),
                 "count": 1,
                 "data_type": "error",
-                "funcion": 4  # FORZAR A INPUT REGISTER
+                "funcion": 4
             }
         
         if self.chk_codigo_error.isChecked():
@@ -560,14 +522,12 @@ class ConfigWindow(QWidget):
                 "address": int(self.reg_codigo_error.text()),
                 "count": 1,
                 "data_type": "int16",
-                "funcion": 4  # FORZAR A INPUT REGISTER
+                "funcion": 4
             }
         
         return profile
     
-    
     def force_initial_read(self):
-        """Fuerza lectura inicial para verificar conexión"""
         try:
             if self.medidor.leer_registros():
                 self.lbl_status.setText("✅ Lectura inicial exitosa")

@@ -11,7 +11,7 @@
       "bytesize": 8,
       "timeout": 2,
       "endianness": "big",
-      "word_order": "big",  
+      "word_order": "big",
       "funcion_default": 4,
       "registros": {
         "unidad_flujo": {
@@ -50,6 +50,22 @@
             "rango": [0, 10000],
             "decimales": 1,
             "color_normal": "#00FF00"
+          }
+        },
+        "velocidad_flujo": {
+          "address": 233,
+          "count": 2,
+          "data_type": "float32",
+          "unidad_medidor": "m/s",
+          "escala": 1.0,
+          "funcion": 4,
+          "descripcion": "Velocidad del flujo en metros por segundo",
+          "widget_ui": {
+            "tipo": "GAUGE_LARGE",
+            "posicion": [0, 2],
+            "rango": [0, 5],
+            "decimales": 3,
+            "color_normal": "#e1bee7"
           }
         },
         "direccion_flujo": {
@@ -118,7 +134,7 @@
         "flujo_acumulado",
         "direccion_flujo"
       ],
-      "widget_layout": "BASIC"  
+      "widget_layout": "BASIC"
     },
     {
       "nombre": "Badger M2000 - Completo",
@@ -127,6 +143,7 @@
         "unidad_flujo",
         "flujo_instantaneo",
         "flujo_acumulado",
+        "velocidad_flujo",
         "direccion_flujo",
         "contador_energizacion",
         "errores_sensor",
@@ -142,7 +159,7 @@
     "bytesize": 8,
     "timeout": 2,
     "endianness": "big",
-    "word_order": "big",  
+    "word_order": "big",
     "funcion_default": 4,
     "unidad_flujo_default": "m³/h"
   },
