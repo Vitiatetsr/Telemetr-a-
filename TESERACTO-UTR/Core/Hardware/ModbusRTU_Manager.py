@@ -169,6 +169,36 @@ class MedidorAguaBase(IMedidorAgua):
                 self.error_handler.log_error("UNIDAD_FLUJO", f"Error leyendo unidad: {e}")
         return self._unidad_flujo_cache
     
+    # Añadir este método a la clase MedidorAguaBase
+    def leer_estado_medidor(self) -> Dict[str, Any]:
+        """
+        Lee el estado del medidor M2000 (registro crítico 0x0106)
+        Devuelve diccionario con estado
+        """
+        with self._connection_lock:
+            if not self.client.connected and not self.conectar():
+                return {}
+
+            try:
+                # Leer registro de estado (0x0106) - UINT16
+                response = self.client.read_input_registers(
+                    address=0x0106,  # Meter Status
+                    count=1,
+                    slave=self.perfil["slave_id"]
+                )
+
+                if response.isError():
+                    return {}
+
+                return {
+                    'meter_status': response.registers[0],
+                    'timestamp': time.time()
+                }
+                
+            except Exception as e:
+                self.error_handler.log_error("007", f"Error leyendo estado medidor: {str(e)}")
+                return {}
+    
     def leer_registros(self) -> Dict[str, RegisterValue]:
         """Lee registros con protección de lock reentrante"""
         with self._connection_lock:

@@ -12,6 +12,7 @@ from GUI.Windows.DashboardWindow import DashboardWindow
 from GUI.Windows.ConfigWindow import ConfigWindow
 from GUI.Windows.ReportsWindow import ReportsWindow
 from GUI.Windows.ErrorConsoleWindow import ErrorConsoleWindow
+from PyQt5.QtCore import QTimer
 
 class MainWindow(FramelessWindow):
     def __init__(self, user, error_handler, sensor_profiles, file_scheduler):
@@ -35,6 +36,9 @@ class MainWindow(FramelessWindow):
         
         # 2. SEGUNDO: Inicializar subsistemas (CON self.tabs YA CREADO)
         self._init_subsystems()
+        
+        # 3. TERCERO: Configurar  verificación básica del medidor
+        self.setup_basic_monitoring()
         
     def setup_ui(self):
         """Configura todos los componentes de UI primero"""
@@ -240,3 +244,39 @@ class MainWindow(FramelessWindow):
         
         # Mostrar estado
         self.show_warning("✅ Sistema operativo iniciado")
+        
+    
+    # Añadir estos métodos a la clase MainWindow
+    def setup_basic_monitoring(self):
+        """Configura la verificación básica del estado del medidor"""
+        self.monitor_timer = QTimer()
+        self.monitor_timer.timeout.connect(self.verificar_estado_medidor)
+        # Cambiar de 60000 ms (60 segundos) a 40000 ms (40 segundos)
+        self.monitor_timer.start(40000)  # 40 segundos en lugar de 60 segundos
+
+    def verificar_estado_medidor(self):
+        """Verificación básica del estado del medidor"""
+        try:
+            if hasattr(self, 'medidor') and self.medidor:
+                # Usar el nuevo método leer_estado_medidor que añadiremos a MedidorAguaBase
+                estado = self.medidor.leer_estado_medidor()
+                if estado and estado.get('meter_status', 0) != 0:
+                    self.error_handler.log_error("007", f"Medidor reporta error: {estado['meter_status']}")
+                    # Mostrar advertencia en la barra de estado
+                    self.show_warning("⚠️ Error en medidor")
+        except Exception as e:
+            self.error_handler.log_error("007", f"Error verificando estado medidor: {str(e)}")
+
+    # Modificar el método closeEvent para detener el timer
+    def closeEvent(self, event):
+        """Maneja el cierre de la aplicación"""
+        # Detener el timer de monitoreo
+        if hasattr(self, 'monitor_timer'):
+            self.monitor_timer.stop()
+            
+        # Cerrar conexión con el medidor
+        if hasattr(self, 'medidor'):
+            self.medidor.desconectar()
+            
+        # Aceptar el evento de cierre
+        event.accept()

@@ -1,6 +1,7 @@
 # GUI/Windows/ErrorConsoleWindow.py
 import os
 import time
+import shutil
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, 
     QPushButton, QComboBox, QLabel, QHeaderView, QAbstractItemView, QLineEdit
@@ -30,7 +31,7 @@ class ErrorConsoleWindow(QWidget):
         # Filtro de nivel
         control_layout.addWidget(QLabel("Nivel:"))
         self.cmb_level = QComboBox()
-        self.cmb_level.addItems(["TODOS", "INFO", "ADVERTENCIA", "ERROR", "CRÍTICO"])
+        self.cmb_level.addItems(["TODOS", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
         self.cmb_level.currentIndexChanged.connect(self.filter_errors)
         control_layout.addWidget(self.cmb_level)
         
@@ -81,11 +82,13 @@ class ErrorConsoleWindow(QWidget):
         self.table.setSortingEnabled(True)
         
         # Colores por nivel
+        # En setup_ui, actualizar colores para coincidir con los niveles estándar
         self.level_colors = {
-            "INFO": QColor(52, 152, 219),
-            "ADVERTENCIA": QColor(243, 156, 18),
-            "ERROR": QColor(231, 76, 60),
-            "CRÍTICO": QColor(155, 89, 182)
+            "DEBUG": QColor(144, 144, 144),      # Gris
+            "INFO": QColor(52, 152, 219),        # Azul
+            "WARNING": QColor(243, 156, 18),     # Amarillo/Naranja
+            "ERROR": QColor(231, 76, 60),        # Rojo
+            "CRITICAL": QColor(155, 89, 182)     # Púrpura
         }
         
         main_layout.addWidget(self.table)
@@ -123,17 +126,17 @@ class ErrorConsoleWindow(QWidget):
             
         try:
             # INTENTAR DIFERENTES CODIFICACIONES
-            for enconding in ['utf-8', 'latin-1', 'cp1252']:
+            lines = []
+            for encoding in ['utf-8', 'latin-1', 'cp1252']:
                 try:
-                    with open(self.log_file, "r", encoding=enconding) as f:
+                    with open(self.log_file, "r", encoding=encoding) as f:
                         lines = f.readlines()
-                    break  # Salir del loop si funciona
+                    break
                 except UnicodeDecodeError:
                     continue
             else:
-                # Si todas fallan, usar utf-8 con manejo de errores
                 with open(self.log_file, 'r', encoding='utf-8', errors='replace') as f:
-                    lines = f.readline()
+                    lines = f.readlines()
             
             # Procesar líneas
             errors = []
@@ -141,42 +144,70 @@ class ErrorConsoleWindow(QWidget):
                 if not line.strip():
                     continue
                     
-                # Parsear formato: [fecha] nivel: descripción
+                # Parsear formato: [fecha] nivel: mensaje
+                if not line.startswith('['):
+                    continue
+                    
                 parts = line.split("]", 1)
                 if len(parts) < 2:
                     continue
                     
                 timestamp = parts[0][1:].strip()
-                rest = parts[1].split(":", 1)
-                if len(rest) < 2:
+                rest = parts[1].strip()
+                
+                # Buscar el primer : para separar nivel y mensaje
+                level_end = rest.find(':')
+                if level_end == -1:
                     continue
                     
-                level = rest[0].strip()
-                description = rest[1].strip()
+                level = rest[:level_end].strip().upper()
+                if "ERROR" in level:
+                    level = "ERROR"
+                elif "WARN" in level:
+                    level = "WARNING"
+                elif "INFO" in level:
+                    level = "INFO"
+                elif "DEBUG" in level:
+                    level = "DEBUG"
+                elif "CRIT" in level:
+                    level = "CRITICAL"
+                message = rest[level_end+1:].strip()
                 
-                # Extraer código de error si existe
+                # Extraer código KER si existe
                 code = ""
-                if "KER-" in description:
-                    code_start = description.find("KER-")
-                    code_end = description.find(":", code_start)
+                ker_pos = message.find("KER-")
+                if ker_pos != -1:
+                    code_end = message.find(":", ker_pos)
                     if code_end != -1:
-                        code = description[code_start+4:code_end]
+                        code = message[ker_pos+4:code_end].strip()
+                    else:
+                        # Si no hay : después de KER-, tomar hasta el primer espacio
+                        space_pos = message.find(" ", ker_pos)
+                        if space_pos != -1:
+                            code = message[ker_pos+4:space_pos].strip()
+                        else:
+                            code = message[ker_pos+4:].strip()
                 
-                # Extraer origen (último componente antes de descripción)
-                origin = ""
-                if "-" in level:
-                    origin = level.split("-")[-1].strip()
-                    level = level.split("-")[0].strip()
-                
+                # Determinar origen basado en el mensaje
+                origin = "Sistema"
+                if "Modbus" in message:
+                    origin = "Modbus"
+                elif "Medidor" in message:
+                    origin = "Medidor"
+                elif "Conexión" in message:
+                    origin = "Conexión"
+                elif "Reporte" in message:
+                    origin = "Reportes"
+                    
                 errors.append({
                     "timestamp": timestamp,
                     "level": level,
                     "code": code,
-                    "description": description,
+                    "description": message,
                     "origin": origin
                 })
                 
-            # Almacenar todos los errores y aplicar filtros
+            # Almacenar y filtrar
             self.all_errors = errors
             self.filter_errors()
             
@@ -255,10 +286,22 @@ class ErrorConsoleWindow(QWidget):
     def clear_log(self):
         """Borra el contenido del archivo de log"""
         try:
+            # Crear backup del log actual
+            backup_path = f"{self.log_file}.backup.{int(time.time())}"
+            if os.path.exists(self.log_file):
+                shutil.copy2(self.log_file, backup_path)
+                
+            # Limpiar archivo
             open(self.log_file, "w").close()
-            self.last_modified = os.path.getmtime(self.log_file)
+            self.last_modified = os.path.getmtime(self.log_file) if os.path.exists(self.log_file) else 0
             self.load_errors()
-            self.error_handler.log_evento("LOG limpiado manualmente")
+            
+            # Registrar evento
+            if hasattr(self, 'error_handler'):
+                self.error_handler.log_evento("Log de errores limpiado manualmente", "300")
+            else:
+                print("Log de errores limpiado manualmente")
+                
         except Exception as e:
             print(f"Error clearing log: {e}")
 

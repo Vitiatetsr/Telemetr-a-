@@ -101,7 +101,7 @@ class RecordFormatter(IRecordFormatter):
         self.config_provider = config_provider
         self.bitmask_converter = bitmask_converter
 
-    def format(self, tipo_registro: str, datos_sensor: dict, perfil_sensor: dict) -> str:
+    def format(self, tipo_registro: str, datos_sensor: dict, perfil_sensor: dict, ker_code: str = "000") -> str:
         try:
             config = self.config_provider.get_config()
             now = datetime.now()
@@ -123,18 +123,23 @@ class RecordFormatter(IRecordFormatter):
                     flags_value = int(flags_raw)
                 except (TypeError, ValueError):
                     flags_value = 0 
+            
+            # Asegurar que ker_code tenga 3 dígitos
+            ker_code_str = str(ker_code).zfill(3)
                 
             if tipo_registro == "Medidor":
                 return (
                     f"M|{fecha}|{hora}|{config['RFC']}|{config['NSM']}|{config['NSUE']}|"
-                    f"{flujo_acum:.3f}|{config['Lat']}|{config['Long']}|{flags_value:03d}"
+                    f"{flujo_acum:.3f}|{config['Lat']}|{config['Long']}|{flags_value:03d}|{ker_code_str}"
                 )
             elif tipo_registro == "SistemaMedicion":
                 return (
                     f"QA|{fecha}|{hora}|{config['RFC']}|{flujo_inst:.3f}|"
-                    f"{flujo_acum:.3f}|{config['Lat']}|{config['Long']}|{flags_value:03d}"
+                    f"{flujo_acum:.3f}|{config['Lat']}|{config['Long']}|{flags_value:03d}|{ker_code_str}"
                 )
             else:
                 raise ValueError("Tipo de registro inválido")
         except Exception as e:
-            return f"ERR|{datetime.now().strftime('%Y%m%d|%H%M%S')}|{type(e).__name__}|{str(e)}"
+            # Incluir el código KER incluso en errores
+            ker_code_str = str(ker_code).zfill(3)
+            return f"ERR|{datetime.now().strftime('%Y%m%d|%H%M%S')}|{type(e).__name__}|{str(e)}|{ker_code_str}"

@@ -95,11 +95,14 @@ class ReportsWindow(QWidget):
             datos = medidor.leer_registros()
             perfil = medidor.perfil
             
-            # Generar contenido con formato
+            # Obtener código KER del ErrorHandler
+            ker_code = self.error_handler.get_ker_code()
+            
+            # Generar contenido con formato, pasando el código KER
             config_provider = ConfigProvider(ConfigManager())
             bitmask_converter = BitmaskConverter()
             formatter = RecordFormatter(config_provider, bitmask_converter)
-            contenido = formatter.format(tipo_reporte, datos, perfil)
+            contenido = formatter.format(tipo_reporte, datos, perfil, ker_code)
             
             name_gen = FileNameGenerator(config_provider)
             
@@ -107,7 +110,7 @@ class ReportsWindow(QWidget):
             nombre_historico = name_gen.generate_historic_name(tipo_reporte)
             ruta_historico = os.path.join(usb_path, nombre_historico)
             
-            with open(ruta_historico, 'a') as f:
+            with open(ruta_historico, 'a', encoding='utf-8') as f:
                 f.write(contenido + "\n")
             
             # 2. Crear archivo diario (pendientes_usb) - CON FECHA
@@ -115,10 +118,28 @@ class ReportsWindow(QWidget):
             ruta_diario = os.path.join("pendientes_usb", nombre_diario)
             
             os.makedirs("pendientes_usb", exist_ok=True)
-            with open(ruta_diario, 'w') as f:
+            with open(ruta_diario, 'w', encoding='utf-8') as f:
                 f.write(contenido)
                 
         except Exception as e:
+            # Incluir código KER incluso en errores de generación
+            ker_code = self.error_handler.get_ker_code()
+            error_content = f"ERR|{datetime.now().strftime('%Y%m%d|%H%M%S')}|{type(e).__name__}|{str(e)}|{ker_code}"
+            
+            # Intentar guardar el error en ambos archivos
+            try:
+                with open(os.path.join(usb_path, "error_report.txt"), 'a', encoding='utf-8') as f:
+                    f.write(error_content + "\n")
+            except:
+                pass
+                
+            try:
+                os.makedirs("pendientes_usb", exist_ok=True)
+                with open(os.path.join("pendientes_usb", "error_report.txt"), 'w', encoding='utf-8') as f:
+                    f.write(error_content)
+            except:
+                pass
+                
             self.error_handler.log_error("REP-GEN", f"Error generando reporte: {str(e)}")
     
     def verificar_tareas_programadas(self):

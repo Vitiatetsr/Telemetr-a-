@@ -271,17 +271,18 @@ class DashboardWindow(QWidget):
         self.setLayout(main_layout)
 
     def setup_timers(self):
+        # Cambiar de 1000 ms (1 segundo) a 30000 ms (30 segundos)
         self.data_timer = QTimer(self)
         self.data_timer.timeout.connect(self.actualizar_datos)
-        self.data_timer.start(1000)
+        self.data_timer.start(30000)  # 30 segundos en lugar de 1000 ms (1 segundo)
         
         self.unit_timer = QTimer(self)
         self.unit_timer.timeout.connect(self.actualizar_unidades)
-        self.unit_timer.start(60000)
+        self.unit_timer.start(60000)  # Mantener 60 segundos para unidades
         
         self.connection_timer = QTimer(self)
         self.connection_timer.timeout.connect(self.verificar_conexion)
-        self.connection_timer.start(5000)
+        self.connection_timer.start(30000)  # Cambiar a 30 segundos para verificación de conexión
 
     def verificar_conexion(self):
         try:
@@ -315,6 +316,7 @@ class DashboardWindow(QWidget):
             self.unidad_medidor = "m³/h"
             self.unidad_visual = "m³/h"
 
+    # Añadir esta verificación básica en el método actualizar_datos
     def actualizar_datos(self):
         try:
             from datetime import datetime
@@ -359,8 +361,27 @@ class DashboardWindow(QWidget):
             self.style().unpolish(self.direction_value)
             self.style().polish(self.direction_value)
             
-            self.system_status.setText("✅ Sistema operativo")
-            self.system_status.setProperty("class", "system-ok")
+            # VERIFICACIÓN BÁSICA DEL ESTADO DEL MEDIDOR (NUEVO)
+            # Solo se ejecuta si el medidor tiene el método leer_estado_medidor
+            if hasattr(self.medidor, 'leer_estado_medidor'):
+                try:
+                    estado = self.medidor.leer_estado_medidor()
+                    if estado and estado.get('meter_status', 0) != 0:
+                        self.system_status.setText("⚠️ Error en medidor")
+                        self.system_status.setProperty("class", "system-error")
+                    else:
+                        self.system_status.setText("✅ Sistema operativo")
+                        self.system_status.setProperty("class", "system-ok")
+                except Exception as e:
+                    # Si falla la lectura de estado, mantener el estado operativo
+                    self.system_status.setText("✅ Sistema operativo")
+                    self.system_status.setProperty("class", "system-ok")
+                    self.error_handler.log_error("DASH_STATUS", f"Error leyendo estado: {str(e)}")
+            else:
+                # Si el medidor no tiene el método, mantener estado operativo
+                self.system_status.setText("✅ Sistema operativo")
+                self.system_status.setProperty("class", "system-ok")
+                
             self.style().unpolish(self.system_status)
             self.style().polish(self.system_status)
             

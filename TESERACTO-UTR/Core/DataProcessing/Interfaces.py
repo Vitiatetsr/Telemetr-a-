@@ -25,7 +25,7 @@ class IFileNameGenerator(ABC):
 
 class IRecordFormatter(ABC):
     @abstractmethod
-    def format(self, tipo_registro: str, datos_sensor: dict, perfil_sensor: dict) -> str:
+    def format(self, tipo_registro: str, datos_sensor: dict, perfil_sensor: dict, ker_code: str = "000") -> str:
         pass
 
 # NUEVA INTERFAZ PARA ALMACENAMIENTO
