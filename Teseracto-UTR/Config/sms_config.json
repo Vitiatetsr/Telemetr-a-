@@ -1,0 +1,7 @@
+{
+    "use_sms": true,
+    "provider": "instasent_http",
+    "api_token": "issw_0qyafntfxfvrj6sfziwnjnpmlwjhvyafvwd",
+    "instasent_sender_id": "Teseractohgf",
+    "numero_destino": "+522228033078"
+}
