@@ -1,0 +1,9 @@
+{
+    "smtp_server": "",
+    "smtp_port": 587,
+    "from": "",
+    "to": [],
+    "subject": "Reporte Tesseract",
+    "username": "",
+    "password": ""
+}

@@ -1,0 +1,9 @@
+{
+    "host": "",
+    "usuario": "",
+    "clave": "",
+    "ruta_remota": "/",
+    "port": 21,
+    "timeout": 30,
+    "secure": true
+}
