@@ -1,0 +1,11 @@
+{
+    "RFC": "HUJL0108026H5",
+    "NSM": "PRUEBAVS-000",
+    "NSUE": "ANGELS-000",
+    "Lat": 0.0,
+    "Long": 0.0,
+    "unidad_visualizacion": "m³/h",
+    "storage_path": "C:\\Users\\Public\\Documents\\REFERENCIAS\\referencias telemetria\\UTR_Acumulado_TSR-0",
+    "hora_reporte": "19:00",
+    "report_type": "SistemaMedicion"
+}
